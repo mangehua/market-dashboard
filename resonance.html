@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>背离分析</title>
+    <link rel="icon" href="logo.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f8fafc;
+            --white: #ffffff;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--light);
+            color: var(--dark);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; }
+        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; transition: all 0.2s; }
+        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
+        .main { flex: 1; padding: 24px; overflow-x: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .header .date { color: var(--gray); font-size: 13px; font-weight: 400; }
+        .update-btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .update-btn:hover { background: var(--primary-light); }
+        .update-btn:disabled { background: var(--gray); cursor: not-allowed; }
+        .chart-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+        .chart-container { height: 350px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+        .stat-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+        .stat-card .label { color: var(--gray); font-size: 13px; margin-bottom: 4px; }
+        .stat-card .value { font-size: 22px; font-weight: 600; }
+        .stat-card .sub { font-size: 12px; color: var(--gray); margin-top: 4px; }
+        .stat-card .value.positive { color: var(--danger); }
+        .stat-card .value.negative { color: var(--success); }
+        .stat-card .value.neutral { color: var(--primary); }
+
+        .legend-box { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+        .subtitle { color: var(--gray); font-size: 14px; font-weight: 400; margin-left: 8px; }
+        .perf-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .perf-table td { padding: 8px 16px; border-bottom: 1px solid var(--border); text-align: center; }
+        .perf-table td:first-child { text-align: left; font-weight: 500; color: var(--gray); width: 80px; }
+        .perf-table .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+        .perf-table .val.good { color: #059669; }
+        .perf-table .val.bad { color: #dc2626; }
+
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">华夫饼手册</div>
+        <div class="nav-item" onclick="location.href='track.html'">共振分析</div>
+        <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
+        <div class="nav-item active">背离分析</div>
+        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
+        <div class="nav-item">设置</div>
+    </div>
+    <div class="main">
+        <div class="header">
+            <h1>妙可蓝多 涨跌背离 <span class="subtitle">方向背离 vs 市场中位</span></h1>
+            <div class="header-right">
+                <span class="date" id="updateDate">加载中...</span>
+            </div>
+        </div>
+        
+        <div class="chart-card">
+            <div class="chart-title">盈亏比 <span style="color:var(--gray);font-size:13px;font-weight:400;">120日窗口</span></div>
+            <div id="perfContainer"><div style="color:var(--gray);font-size:14px;padding:8px 0;">加载中...</div></div>
+        </div>
+        
+        <div id="chartsContainer"></div>
+        
+        <div class="chart-card">
+            <div class="chart-title">信号频率</div>
+            <div style="padding:8px 0;font-size:14px;color:var(--gray);line-height:1.8;">
+                做多: 每 <span id="freqRedDays">-</span> 日一次 (<span id="freqRed">-</span> 次)<br>
+                做空: 每 <span id="freqGreenDays">-</span> 日一次 (<span id="freqGreen">-</span> 次)
+            </div>
+        </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = '.';
+        
+        async function fetchCSV(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = values[i].trim());
+                return obj;
+            });
+        }
+        
+        async function updateData() {
+            const btn = document.getElementById('updateBtn');
+            const dateSpan = document.getElementById('updateDate');
+            btn.disabled = true;
+            btn.textContent = '更新中...';
+            try {
+                const res = await fetch('/api/update/all', { method: 'POST' });
+                const data = await res.json();
+                if (data.status !== 'ok') {
+                    btn.textContent = '更新失败';
+                    alert('更新失败: ' + data.message);
+                    btn.disabled = false;
+                    btn.textContent = '数据更新';
+                    return;
+                }
+                const taskId = data.task_id;
+                const poll = setInterval(async () => {
+                    const pr = await fetch('/api/task/' + taskId);
+                    const ps = await pr.json();
+                    if (ps.status === 'done') {
+                        clearInterval(poll);
+                        btn.textContent = '更新完成';
+                        dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
+                        setTimeout(() => { location.reload(); }, 2000);
+                    } else if (ps.status === 'error') {
+                        clearInterval(poll);
+                        btn.textContent = '更新失败';
+                        alert('更新失败: ' + (ps.error || '未知错误'));
+                        btn.disabled = false;
+                        btn.textContent = '数据更新';
+                    }
+                }, 2000);
+            } catch (e) {
+                btn.textContent = '请求失败';
+                alert('请求失败: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '数据更新';
+            }
+        }
+
+        function calcCorrelation(a, b) {
+            const n = Math.min(a.length, b.length);
+            if (n < 2) return 0;
+            const sa = a.slice(-n), sb = b.slice(-n);
+            const ma = sa.reduce((s, v) => s + v, 0) / n;
+            const mb = sb.reduce((s, v) => s + v, 0) / n;
+            let num = 0, d1 = 0, d2 = 0;
+            for (let i = 0; i < n; i++) {
+                const da = sa[i] - ma, db = sb[i] - mb;
+                num += da * db;
+                d1 += da * da;
+                d2 += db * db;
+            }
+            if (d1 === 0 || d2 === 0) return 0;
+            return num / Math.sqrt(d1 * d2);
+        }
+        
+        async function init() {
+            try {
+                const marketData = await fetchCSV(baseUrl + '/stock_data/涨跌个数_市场.csv');
+                const dateSpan = document.getElementById('updateDate');
+                if (marketData.length > 0) {
+                    dateSpan.textContent = '最新数据: ' + (marketData[marketData.length-1]['date'] || '');
+                }
+                
+                const assets = [
+                    { name: '妙可蓝多', file: '历史价格_妙可蓝多.csv', color: '#3b82f6', chgColor: '#2563eb', label: '妙可蓝多', dateKey: '日期', priceKey: '收盘' },
+                ];
+                
+                const allData = await Promise.all(assets.map(a =>
+                    fetchCSV(baseUrl + '/stock_data/' + a.file)
+                ));
+                
+                const nWindow = 120;
+                const mWindow = marketData.slice(-nWindow);
+                const medVals = mWindow.map(d => parseFloat(d['median_change'] || 0));
+                const labels = mWindow.map(d => d['date']);
+                
+                // Compute returns and correlation for each asset
+                const assetResults = assets.map((a, idx) => {
+                    const data = allData[idx];
+                    const dmap = {};
+                    data.forEach(d => dmap[d[a.dateKey]] = parseFloat(d[a.priceKey]));
+                    const prices = mWindow.map(d => dmap[d['date']] || null);
+                    const chgs = [];
+                    let prev = null;
+                    for (const v of prices) {
+                        if (v === null || prev === null) { chgs.push(null); prev = v; }
+                        else { chgs.push((v - prev) / prev * 100); prev = v; }
+                    }
+                    // 120-day correlation with market median returns
+                    const mRef = marketData.slice(-nWindow);
+                    const medRef = mRef.map(d => parseFloat(d['median_change'] || 0));
+                    const pRef = allData[idx].slice(-nWindow);
+                    const dmapRef = {};
+                    pRef.forEach(d => dmapRef[d[a.dateKey]] = parseFloat(d[a.priceKey]));
+                    const pRefList = mRef.map(d => dmapRef[d['date']] || null);
+                    const rRef = [0];
+                    for (let i = 1; i < pRefList.length; i++) {
+                        if (pRefList[i] === null || pRefList[i-1] === null) rRef.push(0);
+                        else rRef.push((pRefList[i] - pRefList[i-1]) / pRefList[i-1] * 100);
+                    }
+                    const corr = calcCorrelation(rRef.slice(1), medRef.slice(1));
+                    
+                    // 方向背离统计: 只看涨跌方向，不看幅度
+                    let redCnt = 0, greenCnt = 0;
+                    let redUp = 0, redTot = 0, greenDown = 0, greenTot = 0;
+                    let redExUp = 0, redExTot = 0, redExWinSum = 0, redExLossSum = 0;
+                    let greenExDown = 0, greenExTot = 0, greenExWinSum = 0, greenExLossSum = 0;
+                    let redSum3 = 0, greenSum3 = 0;
+                    
+                    for (let i = 0; i < chgs.length; i++) {
+                        const v = chgs[i], m = medVals[i];
+                        if (v === null || m === null) continue;
+                        const dirA = Math.sign(v), dirM = Math.sign(m);
+                        // 红圈: asset跌 AND 市场中位涨 (涨跌反向 → 看多)
+                        if (dirA < 0 && dirM > 0) {
+                            redCnt++;
+                            if (i+1 < chgs.length && chgs[i+1] !== null && medVals[i+1] !== null) {
+                                redTot++;
+                                if (chgs[i+1] > 0) redUp++;
+                                const ex = chgs[i+1] - medVals[i+1];
+                                redExTot++;
+                                if (ex > 0) { redExUp++; redExWinSum += ex; }
+                                else redExLossSum += ex;
+                            }
+                            if (i+3 < chgs.length && prices[i] !== null && prices[i+3] !== null)
+                                redSum3 += (prices[i+3] - prices[i]) / prices[i] * 100;
+                        }
+                        // 绿圈: asset涨 AND 市场中位跌 (涨跌反向 → 看空)
+                        if (dirA > 0 && dirM < 0) {
+                            greenCnt++;
+                            if (i+1 < chgs.length && chgs[i+1] !== null && medVals[i+1] !== null) {
+                                greenTot++;
+                                if (chgs[i+1] < 0) greenDown++;
+                                const ex = chgs[i+1] - medVals[i+1];
+                                greenExTot++;
+                                if (ex < 0) { greenExDown++; greenExWinSum += ex; }
+                                else greenExLossSum += ex;
+                            }
+                            if (i+3 < chgs.length && prices[i] !== null && prices[i+3] !== null)
+                                greenSum3 += (prices[i+3] - prices[i]) / prices[i] * 100;
+                        }
+                    }
+                    
+                    return {
+                        ...a,
+                        chgs, prices, corr,
+                        redCnt, redUp, redTot, redExUp, redExTot, redExWinSum, redExLossSum,
+                        greenCnt, greenDown, greenTot, greenExDown, greenExTot, greenExWinSum, greenExLossSum,
+                        redSum3, greenSum3,
+                    };
+                });
+                
+                // Sort by correlation descending
+                assetResults.sort((a, b) => b.corr - a.corr);
+                
+                // Strategy performance card (盈亏比)
+                function ratio(a) {
+                    const wins = a.redExUp, tot = a.redExTot;
+                    if (tot < 2 || wins === 0 || wins === tot) return { v: null };
+                    const avgWin = a.redExWinSum / wins;
+                    const avgLoss = a.redExLossSum / (tot - wins);
+                    if (avgLoss >= 0) return { v: null };
+                    return { v: avgWin / Math.abs(avgLoss), avgWin, avgLoss: Math.abs(avgLoss) };
+                }
+                function ratioGreen(a) {
+                    const wins = a.greenExDown, tot = a.greenExTot;
+                    if (tot < 2 || wins === 0 || wins === tot) return { v: null };
+                    const avgWin = a.greenExWinSum / wins;
+                    const avgLoss = a.greenExLossSum / (tot - wins);
+                    if (avgLoss <= 0) return { v: null };
+                    return { v: Math.abs(avgWin) / avgLoss, avgWin: Math.abs(avgWin), avgLoss };
+                }
+                
+                document.getElementById('perfContainer').innerHTML = assetResults.map(a => {
+                    const r = ratio(a), rg = ratioGreen(a);
+                    function cell(v) {
+                        if (v === null || v.v === null) return '<td class="val">-</td>';
+                        const ok = v.v >= 1;
+                        return `<td class="val ${ok ? 'good' : 'bad'}">${v.v.toFixed(2)}</td>`;
+                    }
+                    function cellPct(v) {
+                        if (v === null) return '<td class="val">-</td>';
+                        return `<td class="val ${v >= 0 ? 'bad' : 'good'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</td>`;
+                    }
+                    return `
+                    <table class="perf-table">
+                        <thead style="font-size:13px;color:var(--gray);">
+                            <tr><td></td><td style="font-weight:600;color:#f43f5e;">看多</td><td style="font-weight:600;color:#06b6d4;">看空</td></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>盈亏比</td>${cell(r)}${cell(rg)}</tr>
+                            <tr><td>均盈</td>${cellPct(r !== null ? r.avgWin : null)}${cellPct(rg !== null ? rg.avgWin : null)}</tr>
+                            <tr><td>均亏</td>${cellPct(r !== null ? -r.avgLoss : null)}${cellPct(rg !== null ? -rg.avgLoss : null)}</tr>
+                        </tbody>
+                    </table>`;
+                }).join('');
+
+                // Populate signal frequency
+                const a0 = assetResults[0];
+                if (a0) {
+                    const total = a0.redCnt + a0.greenCnt;
+                    document.getElementById('freqRed').textContent = a0.redCnt;
+                    document.getElementById('freqGreen').textContent = a0.greenCnt;
+                    document.getElementById('freqRedDays').textContent = a0.redCnt > 0 ? (nWindow / a0.redCnt).toFixed(1) : '-';
+                    document.getElementById('freqGreenDays').textContent = a0.greenCnt > 0 ? (nWindow / a0.greenCnt).toFixed(1) : '-';
+                }
+                
+                // Charts and stat cards
+                const container = document.getElementById('chartsContainer');
+                container.innerHTML = assetResults.map((a, idx) => {
+                    const chartId = 'chart_' + a.name;
+                    const statId = 'stat_' + a.name;
+                    return `
+                        <div class="chart-card">
+                            <div class="chart-title">${a.label} vs 市场中位涨跌幅 <span style="color:var(--gray);font-size:13px;font-weight:400;">相关系数: ${a.corr.toFixed(2)}</span></div>
+                            <div class="chart-container"><canvas id="${chartId}"></canvas></div>
+                            <div class="stat-grid" id="${statId}" style="margin-top:16px;margin-bottom:0;"></div>
+                        </div>
+                    `;
+                }).join('');
+                
+                // Create charts and stats
+                assetResults.forEach((a, idx) => {
+                    const chartId = 'chart_' + a.name;
+                    const statId = 'stat_' + a.name;
+                    
+                    const pointBg = a.chgs.map((v, i) => {
+                        const m = medVals[i];
+                        if (v === null || m === null) return a.color;
+                        if (v < 0 && m > 0) return '#ef4444';
+                        if (v > 0 && m < 0) return '#10b981';
+                        return a.color;
+                    });
+                    const pointR = a.chgs.map((v, i) => {
+                        const m = medVals[i];
+                        if (v === null || m === null) return 2;
+                        if ((v < 0 && m > 0) || (v > 0 && m < 0)) return 7;
+                        return 2;
+                    });
+                    
+                    new Chart(document.getElementById(chartId), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                { label: a.label + '涨跌幅', data: a.chgs, borderColor: a.color, tension: 0.4, pointRadius: pointR, pointBackgroundColor: pointBg, pointBorderColor: pointBg, yAxisID: 'y' },
+                                { label: '中位数涨跌幅', data: medVals, borderColor: '#ef4444', tension: 0.4, pointRadius: 2, yAxisID: 'y' }
+                            ]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            scales: { y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } } },
+                            plugins: {
+                                legend: { position: 'bottom' },
+                                tooltip: {
+                                    mode: 'index', intersect: false,
+                                    callbacks: {
+                                        label: function(ctx) {
+                                            if (ctx.parsed.y === null) return '';
+                                            return ctx.dataset.label + ': ' + (ctx.parsed.y >= 0 ? '+' : '') + ctx.parsed.y.toFixed(2) + '%';
+                                        }
+                                    }
+                                }
+                            },
+                            interaction: { mode: 'index', intersect: false }
+                        }
+                    });
+                    
+                    document.getElementById(statId).innerHTML = `
+                        <div class="stat-card">
+                            <div class="label"><span class="legend-box" style="background:#ef4444;"></span>红圈 (asset跌·中位涨)</div>
+                            <div class="value neutral">${a.redCnt}次</div>
+                            <div class="sub">看多信号${a.redCnt > 0 ? ' · 后3日均值: ' + (a.redSum3/a.redCnt > 0 ? '+' : '') + (a.redSum3/a.redCnt).toFixed(1) + '%' : ''}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">红圈 · 绝对胜率</div>
+                            <div class="value ${a.redTot > 0 && a.redUp/a.redTot >= 0.6 ? 'positive' : 'negative'}">${a.redTot > 0 ? (a.redUp/a.redTot*100).toFixed(0) : 0}%</div>
+                            <div class="sub">${a.redUp}/${a.redTot} 次日asset涨</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">红圈 · 补涨胜率</div>
+                            <div class="value ${a.redExTot > 0 && a.redExUp/a.redExTot >= 0.6 ? 'positive' : 'negative'}">${a.redExTot > 0 ? (a.redExUp/a.redExTot*100).toFixed(0) : 0}%</div>
+                            <div class="sub">${a.redExUp}/${a.redExTot} 次日跑赢市场中位 · 均值${a.redExTot > 0 ? ((a.redExWinSum + a.redExLossSum > 0 ? '+' : '') + ((a.redExWinSum + a.redExLossSum)/a.redExTot).toFixed(2)) : '0.00'}%</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label"><span class="legend-box" style="background:#10b981;"></span>绿圈 (asset涨·中位跌)</div>
+                            <div class="value neutral">${a.greenCnt}次</div>
+                            <div class="sub">看空信号${a.greenCnt > 0 ? ' · 后3日均值: ' + (a.greenSum3/a.greenCnt > 0 ? '+' : '') + (a.greenSum3/a.greenCnt).toFixed(1) + '%' : ''}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">绿圈 · 绝对胜率</div>
+                            <div class="value ${a.greenTot > 0 && a.greenDown/a.greenTot >= 0.6 ? 'positive' : 'negative'}">${a.greenTot > 0 ? (a.greenDown/a.greenTot*100).toFixed(0) : 0}%</div>
+                            <div class="sub">${a.greenDown}/${a.greenTot} 次日asset跌</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="label">绿圈 · 补跌胜率</div>
+                            <div class="value ${a.greenExTot > 0 && a.greenExDown/a.greenExTot >= 0.6 ? 'positive' : 'negative'}">${a.greenExTot > 0 ? (a.greenExDown/a.greenExTot*100).toFixed(0) : 0}%</div>
+                            <div class="sub">${a.greenExDown}/${a.greenExTot} 次日跑输市场中位 · 均值${a.greenExTot > 0 ? ((a.greenExWinSum + a.greenExLossSum < 0 ? '' : '+') + ((a.greenExWinSum + a.greenExLossSum)/a.greenExTot).toFixed(2)) : '0.00'}%</div>
+                        </div>
+                    `;
+                });
+            } catch (e) {
+                console.error('初始化失败:', e);
+            }
+        }
+        
+        async function uploadCsv() {
+            const btn = document.getElementById('githubCsvBtn');
+            btn.disabled = true;
+            btn.textContent = '上传中...';
+            try {
+                const res = await fetch('/api/upload/csv', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    btn.textContent = '上传完成';
+                    setTimeout(() => { btn.disabled = false; btn.textContent = '上传CSV'; }, 1500);
+                } else {
+                    btn.textContent = '上传失败';
+                    alert('上传失败: ' + data.message);
+                    btn.disabled = false;
+                    btn.textContent = '上传CSV';
+                }
+            } catch (e) {
+                btn.textContent = '请求失败';
+                alert('请求失败: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '上传CSV';
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>

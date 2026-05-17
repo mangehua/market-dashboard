@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图谱分析</title>
+    <link rel="icon" href="logo.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f8fafc;
+            --white: #ffffff;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--light);
+            color: var(--dark);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; }
+        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; transition: all 0.2s; }
+        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
+        .main { flex: 1; padding: 24px; overflow-x: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .header .date { color: var(--gray); font-size: 13px; font-weight: 400; }
+        .update-btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .update-btn:hover { background: var(--primary-light); }
+        .update-btn:disabled { background: var(--gray); cursor: not-allowed; }
+        .chart-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+        .chart-container { height: 350px; }
+        .correlation-table { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .correlation-table h3 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+        .correlation-table table { width: 100%; border-collapse: collapse; }
+        .correlation-table th, .correlation-table td { padding: 10px; text-align: center; border-bottom: 1px solid var(--border); }
+        .correlation-table th { background: var(--light); font-weight: 600; color: var(--gray); }
+        .correlation-table td.positive { color: var(--success); font-weight: 600; }
+        .correlation-table td.negative { color: var(--danger); font-weight: 600; }
+        .correlation-table td.neutral { color: var(--gray); font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">华夫饼手册</div>
+        <div class="nav-item" onclick="location.href='track.html'">共振分析</div>
+        <div class="nav-item active">图谱分析</div>
+        <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
+        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
+        <div class="nav-item">设置</div>
+    </div>
+    <div class="main">
+        <div class="header">
+            <h1>图谱分析</h1>
+            <div class="header-right">
+                <span class="date" id="updateDate">加载中...</span>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">游戏ETF vs 巨人网络</div>
+            <div class="chart-container"><canvas id="chart1"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">游戏ETF vs 市场中位涨跌幅</div>
+            <div class="chart-container"><canvas id="chart2"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">巨人网络 vs 市场中位涨跌幅</div>
+            <div class="chart-container"><canvas id="chart3"></canvas></div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">上证指数 vs 市场中位数累计净值</div>
+            <div class="chart-container"><canvas id="chart4"></canvas></div>
+        </div>
+
+        <div class="correlation-table">
+            <h3>30日收益率相关性分析</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>对比组合</th>
+                        <th>相关系数</th>
+                        <th>相关性</th>
+                    </tr>
+                </thead>
+                <tbody id="correlationBody">
+                    <tr><td colspan="3">计算中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = '.';
+
+        async function fetchCSV(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            const lines = text.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            return lines.slice(1).map(line => {
+                const values = line.split(',');
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = values[i] ? values[i].trim() : '');
+                return obj;
+            });
+        }
+
+        async function updateData() {
+            const btn = document.getElementById('updateBtn');
+            const dateSpan = document.getElementById('updateDate');
+            btn.disabled = true;
+            btn.textContent = '更新中...';
+            try {
+                const res = await fetch('/api/update/all', { method: 'POST' });
+                const data = await res.json();
+                if (data.status !== 'ok') {
+                    btn.textContent = '更新失败';
+                    alert('更新失败: ' + data.message);
+                    btn.disabled = false;
+                    btn.textContent = '数据更新';
+                    return;
+                }
+                const taskId = data.task_id;
+                const poll = setInterval(async () => {
+                    const pr = await fetch('/api/task/' + taskId);
+                    const ps = await pr.json();
+                    if (ps.status === 'done') {
+                        clearInterval(poll);
+                        btn.textContent = '更新完成';
+                        dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
+                        setTimeout(() => { location.reload(); }, 2000);
+                    } else if (ps.status === 'error') {
+                        clearInterval(poll);
+                        btn.textContent = '更新失败';
+                        alert('更新失败: ' + (ps.error || '未知错误'));
+                        btn.disabled = false;
+                        btn.textContent = '数据更新';
+                    }
+                }, 2000);
+            } catch(e) {
+                alert('请求失败: ' + e.message);
+                btn.disabled = false;
+                btn.textContent = '数据更新';
+            }
+        }
+
+        function makeCrosshair(id) {
+            let index = -1, locked = false;
+            const plugin = {
+                id: 'xhair-' + id,
+                afterDraw(chart) {
+                    if (!locked && index < 0) return;
+                    const targetIdx = locked ? index : index;
+                    if (targetIdx < 0 || targetIdx >= chart.config.data.labels.length || !chart.chartArea) return;
+                    const ctx = chart.ctx;
+                    const xAxis = chart.scales.x;
+                    if (!xAxis) return;
+                    const x = xAxis.getPixelForValue(targetIdx);
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(x, chart.chartArea.top);
+                    ctx.lineTo(x, chart.chartArea.bottom);
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = '#000000';
+                    ctx.setLineDash([4, 4]);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+            return {
+                plugin,
+                onHover(event, elements) {
+                    if (!locked) {
+                        if (elements.length > 0) { index = elements[0].index; } else { index = -1; }
+                    }
+                },
+                onClick(event, elements) {
+                    if (!locked) {
+                        if (elements.length > 0) { locked = true; index = elements[0].index; }
+                    } else {
+                        locked = false; index = -1;
+                    }
+                }
+            };
+        }
+
+        async function init() {
+            try {
+                const [market, gameData, stockData, shData, miaoData] = await Promise.all([
+                    fetchCSV(`${baseUrl}/stock_data/涨跌个数_市场.csv`),
+                    fetchCSV(`${baseUrl}/stock_data/历史价格_游戏ETF.csv`),
+                    fetchCSV(`${baseUrl}/stock_data/历史价格_巨人网络.csv`),
+                    fetchCSV(`${baseUrl}/stock_data/历史价格_上证指数.csv`),
+                    fetchCSV(`${baseUrl}/stock_data/历史价格_妙可蓝多.csv`)
+                ]);
+
+                const m30 = market.slice(-30);
+                const game30 = gameData.slice(-30);
+                const stock30 = stockData.slice(-30);
+                const labels = m30.map(d => d['date']);
+                document.getElementById('updateDate').textContent = '最新数据: ' + m30[m30.length-1]['date'];
+
+                function dailyReturns(arr) {
+                    const rets = [0];
+                    for (let i = 1; i < arr.length; i++) {
+                        const p0 = parseFloat(arr[i-1]['收盘']);
+                        const p1 = parseFloat(arr[i]['收盘']);
+                        rets.push((p1 - p0) / p0 * 100);
+                    }
+                    return rets;
+                }
+
+                const gameRets = dailyReturns(game30);
+                const stockRets = dailyReturns(stock30);
+                const shRets = dailyReturns(shData.slice(-30));
+                const miaoRets = dailyReturns(miaoData.slice(-30));
+                const medVals = m30.map(d => parseFloat(d['median_change'] || 0));
+
+                // 4 charts with independent crosshair
+                function createChart(id, title, data1, label1, color1, data2, label2, color2, yLabel) {
+                    const xh = makeCrosshair(id);
+                    new Chart(document.getElementById(id), {
+                        type: 'line',
+                        data: {
+                            labels,
+                            datasets: [
+                                { label: label1, data: data1, borderColor: color1, tension: 0.4, pointRadius: 2 },
+                                { label: label2, data: data2, borderColor: color2, tension: 0.4, pointRadius: 2 }
+                            ]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            scales: { y: { title: { display: true, text: yLabel } } },
+                            plugins: {
+                                legend: { position: 'bottom' },
+                                tooltip: {
+                                    mode: 'index', intersect: false,
+                                    callbacks: {
+                                        label: function(ctx) {
+                                            const v = ctx.parsed.y;
+                                            return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + (typeof v === 'number' ? v.toFixed(2) : v);
+                                        }
+                                    }
+                                }
+                            },
+                            interaction: { mode: 'index', intersect: false },
+                            onClick: (e) => xh.onClick(e, e.chart.getElementsAtEventForMode(e, 'index', { mode: 'index', intersect: false }, false)),
+                            onHover: (e, els) => xh.onHover(e, els)
+                        },
+                        plugins: [xh.plugin]
+                    });
+                }
+
+                // ① 游戏ETF vs 巨人网络 (涨跌幅%)
+                createChart('chart1', null, gameRets, '游戏ETF', '#2563eb', stockRets, '巨人网络', '#10b981', '涨跌幅(%)');
+                // ② 游戏ETF vs 市场中位涨跌幅
+                createChart('chart2', null, gameRets, '游戏ETF', '#2563eb', medVals, '市场中位涨跌幅', '#8b5cf6', '涨跌幅(%)');
+                // ③ 巨人网络 vs 市场中位涨跌幅
+                createChart('chart3', null, stockRets, '巨人网络', '#10b981', medVals, '市场中位涨跌幅', '#8b5cf6', '涨跌幅(%)');
+
+                // ④ 上证指数 vs 市场中位数累计净值 (累计值)
+                const shMap = {};
+                shData.forEach(d => shMap[d['日期']] = parseFloat(d['收盘']));
+                const sh30 = m30.map(d => shMap[d['date']] || null);
+                const cumMed = [100];
+                let cum = 100;
+                for (let i = 1; i < m30.length; i++) {
+                    cum = cum * (1 + parseFloat(m30[i]['median_change'] || 0) / 100);
+                    cumMed.push(cum);
+                }
+                const shNorm = sh30.map(v => v !== null && sh30[0] !== null ? 100 * v / sh30[0] : null);
+                const xh4 = makeCrosshair('chart4');
+                new Chart(document.getElementById('chart4'), {
+                    type: 'line',
+                    data: {
+                        labels,
+                        datasets: [
+                            { label: '中位数累计净值', data: cumMed, borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+                            { label: '上证指数(归一)', data: shNorm, borderColor: '#ef4444', tension: 0.4, pointRadius: 0, borderWidth: 1.5, borderDash: [4,3] }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { title: { display: true, text: '净值(基日=100)' } } },
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        if (ctx.parsed.y === null) return '';
+                                        return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2);
+                                    }
+                                }
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false },
+                        onClick: (e) => xh4.onClick(e, e.chart.getElementsAtEventForMode(e, 'index', { mode: 'index', intersect: false }, false)),
+                        onHover: (e, els) => xh4.onHover(e, els)
+                    },
+                    plugins: [xh4.plugin]
+                });
+
+                // 30日收益率相关性 (6行, 全部用日收益率)
+                function calcCorrelation(a, b) {
+                    const n = Math.min(a.length, b.length);
+                    if (n < 2) return 0;
+                    const sa = a.slice(-n), sb = b.slice(-n);
+                    const ma = sa.reduce((s, v) => s + v, 0) / n;
+                    const mb = sb.reduce((s, v) => s + v, 0) / n;
+                    let num = 0, d1 = 0, d2 = 0;
+                    for (let i = 0; i < n; i++) {
+                        const da = sa[i] - ma, db = sb[i] - mb;
+                        num += da * db;
+                        d1 += da * da;
+                        d2 += db * db;
+                    }
+                    if (d1 === 0 || d2 === 0) return 0;
+                    return num / Math.sqrt(d1 * d2);
+                }
+
+                function getCorrClass(r) {
+                    if (r > 0.5) return 'positive';
+                    if (r < -0.5) return 'negative';
+                    return 'neutral';
+                }
+                function getCorrLabel(r) {
+                    if (r > 0.7) return '强正相关';
+                    if (r > 0.3) return '正相关';
+                    if (r > -0.3) return '弱相关';
+                    if (r > -0.7) return '负相关';
+                    return '强负相关';
+                }
+
+                // Use return series (skip day 0 = 0)
+                const gr = gameRets.slice(1);
+                const sr = stockRets.slice(1);
+                const shr = shRets.slice(1);
+                const mr = medVals.slice(1);
+                const miaoR = miaoRets.slice(1);
+
+                const pairs = [
+                    ['上证 vs 游戏ETF', shr, gr],
+                    ['上证 vs 巨人网络', shr, sr],
+                    ['游戏ETF vs 巨人网络', gr, sr],
+                    ['上证 vs 市场中位', shr, mr],
+                    ['游戏ETF vs 市场中位', gr, mr],
+                    ['巨人网络 vs 市场中位', sr, mr],
+                    ['妙可蓝多 vs 市场中位', miaoR, mr],
+                ];
+
+                document.getElementById('correlationBody').innerHTML = pairs.map(p => {
+                    const r = calcCorrelation(p[1], p[2]);
+                    return `<tr><td>${p[0]}</td><td class="${getCorrClass(r)}">${r.toFixed(2)}</td><td class="${getCorrClass(r)}">${getCorrLabel(r)}</td></tr>`;
+                }).join('');
+            } catch (error) {
+                console.error('加载失败:', error);
+                alert('加载数据失败');
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
