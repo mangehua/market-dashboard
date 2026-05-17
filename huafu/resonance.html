@@ -81,7 +81,7 @@
         </div>
         
         <div class="chart-card">
-            <div class="chart-title">盈亏比 <span style="color:var(--gray);font-size:13px;font-weight:400;">120日窗口</span></div>
+            <div class="chart-title">盈亏比 <span style="color:var(--gray);font-size:13px;font-weight:400;">60日窗口</span></div>
             <div id="perfContainer"><div style="color:var(--gray);font-size:14px;padding:8px 0;">加载中...</div></div>
         </div>
         
@@ -195,7 +195,7 @@
                     fetchCSV(baseUrl + '/stock_data/' + a.file)
                 ));
                 
-                const nWindow = 120;
+                const nWindow = 60;
                 const mWindow = marketData.slice(-nWindow);
                 const medVals = mWindow.map(d => parseFloat(d['median_change'] || 0));
                 const labels = mWindow.map(d => d['date']);
@@ -212,7 +212,7 @@
                         if (v === null || prev === null) { chgs.push(null); prev = v; }
                         else { chgs.push((v - prev) / prev * 100); prev = v; }
                     }
-                    // 120-day correlation with market median returns
+                    // 60-day correlation with market median returns
                     const mRef = marketData.slice(-nWindow);
                     const medRef = mRef.map(d => parseFloat(d['median_change'] || 0));
                     const pRef = allData[idx].slice(-nWindow);
