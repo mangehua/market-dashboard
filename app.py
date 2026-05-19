@@ -90,7 +90,7 @@ def upload_html():
     uploaded = []
     for f in ['index.html', 'resonance.html', 'analysis.html', 'track.html']:
         path = os.path.join(BASE_DIR, f)
-        if os.path.exists(path) and upload_to_github(path, f'huafu/{f}'):
+        if os.path.exists(path) and upload_to_github(path, f'{f}'):
             uploaded.append(f)
     return uploaded
 
@@ -100,7 +100,7 @@ def upload_csv():
     for f in os.listdir(data_dir):
         if f.endswith('.csv'):
             path = os.path.join(data_dir, f)
-            if upload_to_github(path, f'huafu/stock_data/{f}'):
+            if upload_to_github(path, f'stock_data/{f}'):
                 uploaded.append(f)
     return uploaded
 
