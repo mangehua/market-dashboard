@@ -90,9 +90,10 @@
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
         <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
         <div class="nav-item active">信号收集</div>
+        <div class="nav-item" onclick="location.href='decision.html'">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
-        <div class="nav-item" id="updateNavBtn" onclick="updateData()">⚡ 数据更新</div>
+        <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
     </div>
     <div class="main">
         <div class="header">
@@ -254,7 +255,7 @@
                 const res = await fetch('/api/update/all', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ok') {
-                    nav.textContent = '⚡ 数据更新';
+                    nav.textContent = '数据更新';
                     showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
                     nav.classList.remove('disabled');
                     if (pb) pb.classList.remove('active');
@@ -273,7 +274,7 @@
                         setTimeout(() => { location.reload(); }, 2000);
                     } else if (ps.status === 'error') {
                         clearInterval(poll);
-                        nav.textContent = '⚡ 数据更新';
+                        nav.textContent = '数据更新';
                         showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
                         nav.classList.remove('disabled');
                         if (pb) pb.classList.remove('active');
@@ -282,7 +283,7 @@
             } catch(e) {
                 showToast('请求失败: ' + e.message, 'error', function() { updateData(); });
                 nav.classList.remove('disabled');
-                nav.textContent = '⚡ 数据更新';
+                nav.textContent = '数据更新';
                 if (pb) pb.classList.remove('active');
             }
         }
@@ -556,6 +557,7 @@
             if (e.key === '2') { location.href = 'index.html'; }
             if (e.key === '3') { location.href = 'resonance.html'; }
             if (e.key === '4') { return; }
+            if (e.key === '5') { location.href = 'decision.html'; }
         });
 
         init();
