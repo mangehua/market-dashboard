@@ -56,14 +56,10 @@
 
         .step { display: none; }
         .step.active { display: block; animation: cardFadeIn 0.3s ease both; }
-        .dim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }
-        .dim-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
-        .dim-card .dim-label { font-size: 14px; color: var(--gray); margin-bottom: 8px; }
-        .dim-card .dim-desc { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-        .dim-card .dim-stat { font-size: 12px; color: var(--gray); }
-        .sentiment-row { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: var(--white); border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 32px; }
-        .sentiment-row .big-score { font-size: 32px; font-weight: 700; }
-        .sentiment-row .big-label { font-size: 20px; font-weight: 600; }
+        .bp-table { width:100%; border-collapse:collapse; font-size:13px; }
+        .bp-table th { text-align:left; padding:8px 10px; color:var(--gray); font-weight:400; border-bottom:1px solid var(--border); }
+        .bp-table td { padding:8px 10px; border-bottom:1px solid var(--border); }
+        .bp-table tbody tr:last-child td { border-bottom:none; }
         .stock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
         .stock-card {
             background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow);
@@ -115,7 +111,7 @@
     </div>
     <div class="main">
         <div class="header">
-            <h1>决策树 <span class="subtitle" style="color:var(--gray);font-size:14px;font-weight:400;margin-left:8px;">大盘环境 → 个股定位 → 综合判定</span></h1>
+            <h1>决策树 <span class="subtitle" style="color:var(--gray);font-size:14px;font-weight:400;margin-left:8px;">大盘环境 → 个股定位 → 综合判定</span> <span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:500;vertical-align:middle;margin-left:8px;">测试模块</span></h1>
             <div class="header-right">
                 <span class="date" id="updateDate">加载中...</span>
             </div>
@@ -201,14 +197,15 @@
 
         function renderL1(l1) {
             var panel = document.getElementById('l1Panel');
-            var html = '<div class="dim-grid">';
+            var html = '<div class="result-panel"><table class="bp-table"><thead><tr><th>维度</th><th style="text-align:center;">信号</th><th style="text-align:right;color:#94a3b8;font-weight:400;">信号排名</th><th style="text-align:center;color:#94a3b8;font-weight:400;">信号统计</th></tr></thead><tbody>';
+            var dotColor = {'极端涨停':'#ef4444','极端普涨':'#f59e0b','市场趋势':'#3b82f6','市场成交量':'#10b981','支撑压力':'#8b5cf6'};
             (l1.dims || []).forEach(function(d) {
-                var color = d.score > 0 ? '#10b981' : d.score < 0 ? '#ef4444' : '#f59e0b';
-                html += '<div class="dim-card"><div class="dim-label">' + d.label + '</div><div class="dim-desc" style="color:' + color + ';">' + d.desc + '</div><div class="dim-stat">' + d.signal_stats + '</div></div>';
+                var dc = d.score > 0 ? '#10b981' : d.score < 0 ? '#ef4444' : '#94a3b8';
+                var rp = 100 - d.pct;
+                var rc = rp <= 20 ? '#10b981' : rp >= 80 ? '#ef4444' : '#94a3b8';
+                html += '<tr><td><span style="color:' + (dotColor[d.label] || '#94a3b8') + ';font-weight:600;">●</span> ' + d.label + '</td><td style="text-align:center;font-size:12px;color:' + dc + ';">' + d.desc + '</td><td style="text-align:right;color:' + rc + ';">前' + rp + '%</td><td style="text-align:center;font-size:12px;color:var(--gray);">' + d.signal_stats + '</td></tr>';
             });
-            html += '</div>';
-            var sent = l1.sentiment_raw !== null ? l1.sentiment_raw.toFixed(1) : '无数据';
-            html += '<div class="sentiment-row"><span class="big-score">' + sent + '</span><span class="big-label">' + l1.l1_emoji + ' ' + l1.l1_label + ' (' + (l1.l1_score >= 0 ? '+' : '') + l1.l1_score + ')</span></div>';
+            html += '</tbody></table></div>';
             panel.innerHTML = html;
         }
 
