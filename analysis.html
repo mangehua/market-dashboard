@@ -326,7 +326,7 @@
                     const vals60 = sentiment.slice(-61, -1).map(d => parseFloat(d[c.scoreKey]));
                     const rawPct = pctRank(vals60, parseFloat(sLast[c.scoreKey]));
                     const pct = flipDims.includes(c.label) ? 100 - rawPct : rawPct;
-                    const dim60 = sentiment.slice(-61, -1).map(d => parseInt(d[c.dim]));
+                    const dim60 = sentiment.slice(-121, -1).map(d => parseInt(d[c.dim]));
                     // 信号统计
                     let signalStats;
                     if (['极端涨停', '极端普涨'].includes(c.label)) {
@@ -359,7 +359,19 @@
                         const label = c.label === '市场趋势' ? '价' : '量';
                         signalStats = `${label}${isHealthy ? '健康' : '不健康'}持续${streakCurrent}d / 均${streakAvg.toFixed(1)}d`;
                     } else {
-                        if (val === 20) signalStats = `支撑概率${Math.round(dim60.filter(v => v === 20).length / dim60.length * 100)}%`;
+                        if (val === 20) {
+                            const prob = Math.round(dim60.filter(v => v === 20).length / dim60.length * 100);
+                            let upCnt = 0, tot = 0;
+                            const recent120 = sentiment.slice(Math.max(0, sentiment.length - 121), -1);
+                            for (const r of recent120) {
+                                if (parseInt(r['dim_position']) === 20) {
+                                    const d = (r['date'] || '').trim();
+                                    if (d in nextDown) { tot++; if (!nextDown[d]) upCnt++; }
+                                }
+                            }
+                            const upPct = tot ? Math.round(upCnt / tot * 100) : 0;
+                            signalStats = `支撑信号频率${prob}% / 次日上涨频率${upPct}%`;
+                        }
                         else if (val === -20) {
                             const prob = Math.round(dim60.filter(v => v === -20).length / dim60.length * 100);
                             let downCnt = 0, tot = 0;
