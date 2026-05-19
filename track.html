@@ -32,6 +32,8 @@
         .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
         .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; transition: all 0.2s; }
         .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
+.nav-item.disabled { opacity:0.4; pointer-events:none; }
+.nav-divider { border:none; border-top:1px solid var(--border); margin:8px 16px; }
         .main { flex: 1; padding: 24px; overflow-x: auto; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .header h1 { font-size: 24px; font-weight: 600; }
@@ -49,7 +51,15 @@
         .stat-change.negative { color: var(--danger); }
         .chart-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
         .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
-        .chart-container { height: 350px; }
+        .chart-container { height: 350px; position:relative; }
+        .sk-overlay { position:absolute; inset:0; background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:sk-shimmer 1.5s ease-in-out infinite; border-radius:12px; z-index:1; }
+        @keyframes sk-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
+        .toast { padding:12px 20px; border-radius:8px; color:#fff; font-size:14px; margin-bottom:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); animation:toastIn .3s ease; max-width:400px; }
+        .toast.error { background:#ef4444; }
+        .toast.success { background:#10b981; }
+        .toast.warning { background:#f59e0b; }
+        @keyframes toastIn { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
     </style>
 </head>
 <body>
@@ -60,12 +70,13 @@
         <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
         <div class="nav-item">设置</div>
+        <hr class="nav-divider">
+        <div class="nav-item" id="updateNavBtn" onclick="updateData()">⚡ 数据更新</div>
     </div>
     <div class="main">
         <div class="header">
             <h1>共振分析</h1>
             <div class="header-right">
-                <button class="update-btn" id="updateBtn" onclick="updateData()" style="background:#7c3aed;">数据更新</button>
                 <button class="update-btn" id="uploadCsvBtn" onclick="uploadCsv()" style="background:#28a745;margin-left:8px;">上传CSV</button>
                 <button class="update-btn" id="uploadHtmlBtn" onclick="uploadHtml()" style="background:#4f46e5;margin-left:8px;">上传HTML</button>
                 <span class="date" id="updateDate">加载中...</span>
@@ -91,25 +102,39 @@
         
         <div class="chart-card">
             <div class="chart-title">上证指数价格走势</div>
-            <div class="chart-container"><canvas id="assetChart"></canvas></div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="assetChart"></canvas></div>
         </div>
         
         <div class="chart-card">
             <div class="chart-title">游戏ETF价格走势</div>
-            <div class="chart-container"><canvas id="gameChart"></canvas></div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="gameChart"></canvas></div>
         </div>
         <div class="chart-card">
             <div class="chart-title">巨人网络股价走势</div>
-            <div class="chart-container"><canvas id="equityChart"></canvas></div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="equityChart"></canvas></div>
         </div>
     </div>
 
     <script>
         const baseUrl = '.';
         if (!['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
-            document.getElementById('uploadCsvBtn').style.display = 'none';
-            document.getElementById('uploadHtmlBtn').style.display = 'none';
-            document.getElementById('updateBtn').style.display = 'none';
+            document.getElementById('uploadCsvBtn').disabled = true;
+            document.getElementById('uploadHtmlBtn').disabled = true;
+            document.getElementById('uploadCsvBtn').title = '仅限本地使用';
+            document.getElementById('uploadHtmlBtn').title = '仅限本地使用';
+            document.getElementById('updateNavBtn').classList.add('disabled');
+            document.getElementById('updateNavBtn').title = '仅限本地使用';
+        }
+        
+        function showToast(msg, type) {
+            type = type || 'error';
+            var c = document.getElementById('toastContainer');
+            if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+            var t = document.createElement('div');
+            t.className = 'toast ' + type;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 3000);
         }
         
         async function fetchCSV(url) {
@@ -127,18 +152,18 @@
         }
         
         async function updateData() {
-            const btn = document.getElementById('updateBtn');
+            const nav = document.getElementById('updateNavBtn');
             const dateSpan = document.getElementById('updateDate');
-            btn.disabled = true;
-            btn.textContent = '更新中...';
+            if (!nav) return;
+            nav.classList.add('disabled');
+            nav.textContent = '⏳ 更新中...';
             try {
                 const res = await fetch('/api/update/all', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ok') {
-                    btn.textContent = '更新失败';
-                    alert('更新失败: ' + data.message);
-                    btn.disabled = false;
-                    btn.textContent = '数据更新';
+                    nav.textContent = '⚡ 数据更新';
+                    showToast('更新失败: ' + data.message, 'error');
+                    nav.classList.remove('disabled');
                     return;
                 }
                 const taskId = data.task_id;
@@ -147,22 +172,21 @@
                     const ps = await pr.json();
                     if (ps.status === 'done') {
                         clearInterval(poll);
-                        btn.textContent = '更新完成';
-                        dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
+                        nav.textContent = '✅ 更新完成';
+                        if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
+                        showToast('数据更新完成', 'success');
                         setTimeout(() => { location.reload(); }, 2000);
                     } else if (ps.status === 'error') {
                         clearInterval(poll);
-                        btn.textContent = '更新失败';
-                        alert('更新失败: ' + (ps.error || '未知错误'));
-                        btn.disabled = false;
-                        btn.textContent = '数据更新';
+                        nav.textContent = '⚡ 数据更新';
+                        showToast('更新失败: ' + (ps.error || '未知错误'), 'error');
+                        nav.classList.remove('disabled');
                     }
                 }, 2000);
             } catch (e) {
-                btn.textContent = '请求失败';
-                alert('请求失败: ' + e.message);
-                btn.disabled = false;
-                btn.textContent = '数据更新';
+                showToast('请求失败: ' + e.message, 'error');
+                nav.classList.remove('disabled');
+                nav.textContent = '⚡ 数据更新';
             }
         }
         
@@ -175,16 +199,17 @@
                 const data = await res.json();
                 if (data.status === 'ok') {
                     btn.textContent = '上传完成';
+                    showToast('CSV上传完成', 'success');
                     setTimeout(() => { btn.disabled = false; btn.textContent = '上传CSV'; }, 1500);
                 } else {
                     btn.textContent = '上传失败';
-                    alert('上传失败: ' + data.message);
+                    showToast('上传失败: ' + data.message, 'error');
                     btn.disabled = false;
                     btn.textContent = '上传CSV';
                 }
             } catch (e) {
                 btn.textContent = '请求失败';
-                alert('请求失败: ' + e.message);
+                showToast('请求失败: ' + e.message, 'error');
                 btn.disabled = false;
                 btn.textContent = '上传CSV';
             }
@@ -199,16 +224,17 @@
                 const data = await res.json();
                 if (data.status === 'ok') {
                     btn.textContent = '上传完成';
+                    showToast('HTML上传完成', 'success');
                     setTimeout(() => { btn.disabled = false; btn.textContent = '上传HTML'; }, 1500);
                 } else {
                     btn.textContent = '上传失败';
-                    alert('上传失败: ' + data.message);
+                    showToast('上传失败: ' + data.message, 'error');
                     btn.disabled = false;
                     btn.textContent = '上传HTML';
                 }
             } catch (e) {
                 btn.textContent = '请求失败';
-                alert('请求失败: ' + e.message);
+                showToast('请求失败: ' + e.message, 'error');
                 btn.disabled = false;
                 btn.textContent = '上传HTML';
             }
@@ -406,9 +432,10 @@
                 createChart('assetChart', etfRecent.map(d => d['日期']), etfRecent.map(d => parseFloat(d['收盘'])), etfPs, latestVwap, '上证指数');
                 createChart('gameChart', gameRecent.map(d => d['日期']), gameRecent.map(d => parseFloat(d['收盘'])), gamePs, null, '游戏ETF');
                 createChart('equityChart', stockRecent.map(d => d['日期']), stockRecent.map(d => parseFloat(d['收盘'])), stockPs, null, '巨人网络');
+                document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
             } catch (error) {
                 console.error('加载失败:', error);
-                alert('加载数据失败');
+                showToast('加载数据失败', 'error');
             }
         }
         
