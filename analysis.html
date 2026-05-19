@@ -90,7 +90,7 @@
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
         <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
         <div class="nav-item active">信号收集</div>
-        <div class="nav-item disabled" title="暂未开放">设置</div>
+        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
         <div class="nav-item" id="updateNavBtn" onclick="updateData()">⚡ 数据更新</div>
     </div>
@@ -144,10 +144,7 @@
 
     <script>
         const baseUrl = '.';
-        if (!['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
-            document.getElementById('updateNavBtn').classList.add('disabled');
-            document.getElementById('updateNavBtn').title = '仅限本地使用';
-        }
+        const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
 
         function showToast(msg, type, onRetry) {
             type = type || 'error';
@@ -249,6 +246,7 @@
             const dateSpan = document.getElementById('updateDate');
             const pb = document.getElementById('progressBar');
             if (!nav) return;
+            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             nav.classList.add('disabled');
             nav.textContent = '⏳ 更新中...';
             if (pb) pb.classList.add('active');
