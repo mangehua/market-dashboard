@@ -353,7 +353,7 @@
             el.classList.toggle('flipped');
         }
 
-        function drawSingleCandle(id, o, h, l, c, support, resistance) {
+        function drawMiniCandles(id, candles, support, resistance) {
             const canvas = document.getElementById(id);
             const ctx = canvas.getContext('2d');
             const w = canvas.width, ch = canvas.height;
@@ -364,8 +364,13 @@
 
             const pad = 20;
             const drawW = w - pad * 2;
-            const dataMin = Math.min(l, support);
-            const dataMax = Math.max(h, resistance);
+            let dataMin = Infinity, dataMax = -Infinity;
+            for (const c of candles) {
+                if (c.l < dataMin) dataMin = c.l;
+                if (c.h > dataMax) dataMax = c.h;
+            }
+            if (support < dataMin) dataMin = support;
+            if (resistance > dataMax) dataMax = resistance;
             const range = Math.max(dataMax - dataMin, 0.001);
             const padAmount = range * 0.15;
             const minV = dataMin - padAmount;
@@ -389,16 +394,20 @@
             ctx.fillStyle = '#ef4444';
             ctx.fillText(resistance.toFixed(1), 4, toY(resistance) - 4);
 
-            const cx = w / 2;
-            const isUp = c >= o;
-            const color = isUp ? '#ef4444' : '#10b981';
-            ctx.strokeStyle = color;
-            ctx.fillStyle = color;
-            ctx.beginPath(); ctx.moveTo(cx, toY(h)); ctx.lineTo(cx, toY(l)); ctx.stroke();
-            const bt = toY(Math.max(o, c));
-            const bb = toY(Math.min(o, c));
-            ctx.fillRect(cx - 6, bt, 12, Math.max(bb - bt, 1));
-            ctx.fillText(c.toFixed(1), cx + 14, toY(c) + 5);
+            const n = candles.length;
+            for (let i = 0; i < n; i++) {
+                const {o, h, l, c} = candles[i];
+                const cx = pad + drawW * (i * 2 + 1) / (n * 2);
+                const isUp = c >= o;
+                const color = isUp ? '#ef4444' : '#10b981';
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.beginPath(); ctx.moveTo(cx, toY(h)); ctx.lineTo(cx, toY(l)); ctx.stroke();
+                const bt = toY(Math.max(o, c));
+                const bb = toY(Math.min(o, c));
+                ctx.fillRect(cx - 6, bt, 12, Math.max(bb - bt, 1));
+                ctx.fillText(c.toFixed(1), cx + 14, toY(c) + 5);
+            }
         }
 
         async function init() {
@@ -421,16 +430,21 @@
                 const latestEtf = etfRecent[etfRecent.length - 1];
                 const prevEtf = etfRecent[etfRecent.length - 2];
                 const latestGame = gameRecent[gameRecent.length - 1];
+                const prevGame = gameRecent[gameRecent.length - 2];
                 const latestStock = stockRecent[stockRecent.length - 1];
-                const etfOpen = parseFloat(latestEtf['开盘']);
-                const etfHigh = parseFloat(latestEtf['最高']);
-                const etfLow = parseFloat(latestEtf['最低']);
-                const gameOpen = parseFloat(latestGame['开盘']);
-                const gameHigh = parseFloat(latestGame['最高']);
-                const gameLow = parseFloat(latestGame['最低']);
-                const stockOpen = parseFloat(latestStock['开盘']);
-                const stockHigh = parseFloat(latestStock['最高']);
-                const stockLow = parseFloat(latestStock['最低']);
+                const prevStock = stockRecent[stockRecent.length - 2];
+                const etfCandles = [prevEtf, latestEtf].map(d => ({
+                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
+                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
+                }));
+                const gameCandles = [prevGame, latestGame].map(d => ({
+                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
+                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
+                }));
+                const stockCandles = [prevStock, latestStock].map(d => ({
+                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
+                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
+                }));
                 
                 const currentPrice = parseFloat(latestEtf['收盘']);
                 const prevPrice = parseFloat(prevEtf['收盘']);
@@ -445,7 +459,7 @@
                 
                 document.getElementById('marketPrice').textContent = currentPrice.toFixed(2);
                 document.getElementById('marketChange').textContent = '支撑 ' + support.toFixed(2) + ' | 压力 ' + resistance.toFixed(2);
-                drawSingleCandle('miniEtf', etfOpen, etfHigh, etfLow, currentPrice, support, resistance);
+                drawMiniCandles('miniEtf', etfCandles, support, resistance);
                 
                 const gamePrice = parseFloat(latestGame['收盘']);
                 const gamePsVals = gamePs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
@@ -459,7 +473,7 @@
                 
                 document.getElementById('sectorPrice').textContent = gamePrice.toFixed(3);
                 document.getElementById('sectorChange').textContent = '支撑 ' + gameSupport.toFixed(3) + ' | 压力 ' + gameResistance.toFixed(3);
-                drawSingleCandle('miniGame', gameOpen, gameHigh, gameLow, gamePrice, gameSupport, gameResistance);
+                drawMiniCandles('miniGame', gameCandles, gameSupport, gameResistance);
                 
                 const stockPrice = parseFloat(latestStock['收盘']);
                 const stockPsVals = stockPs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
@@ -473,7 +487,7 @@
                 
                 document.getElementById('stockPrice').textContent = stockPrice.toFixed(2);
                 document.getElementById('stockChange').textContent = '支撑 ' + stockSupport.toFixed(2) + ' | 压力 ' + stockResistance.toFixed(2);
-                drawSingleCandle('miniStock', stockOpen, stockHigh, stockLow, stockPrice, stockSupport, stockResistance);
+                drawMiniCandles('miniStock', stockCandles, stockSupport, stockResistance);
                 
                 document.getElementById('updateDate').textContent = '最新数据: ' + latestEtf['日期'];
                 
