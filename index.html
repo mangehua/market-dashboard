@@ -62,6 +62,10 @@
         .sk-overlay { position:absolute; inset:0; background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:sk-shimmer 1.5s ease-in-out infinite; border-radius:12px; z-index:1; }
         .sk-row { height:20px; background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:sk-shimmer 1.5s ease-in-out infinite; border-radius:4px; }
         @keyframes sk-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+        .progress-bar { position:fixed; top:0; left:0; right:0; z-index:9999; height:3px; background:var(--border); overflow:hidden; display:none; }
+        .progress-bar.active { display:block; }
+        .progress-bar-inner { height:100%; width:40%; background:linear-gradient(90deg,var(--primary),#818cf8); border-radius:2px; animation:pb-indeterminate 1.5s ease-in-out infinite; }
+        @keyframes pb-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
     </style>
 </head>
 <body>
@@ -82,6 +86,7 @@
                 <span class="date" id="updateDate">加载中...</span>
             </div>
         </div>
+        <div class="progress-bar" id="progressBar"><div class="progress-bar-inner"></div></div>
 
         <div class="chart-card">
             <div class="chart-title">游戏ETF vs 巨人网络</div>
@@ -124,15 +129,22 @@
             document.getElementById('updateNavBtn').title = '仅限本地使用';
         }
 
-        function showToast(msg, type) {
+        function showToast(msg, type, onRetry) {
             type = type || 'error';
             var c = document.getElementById('toastContainer');
             if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
             var t = document.createElement('div');
             t.className = 'toast ' + type;
             t.textContent = msg;
+            if (onRetry) {
+                var b = document.createElement('button');
+                b.textContent = '重试';
+                b.style.cssText = 'margin-left:12px;padding:4px 12px;border:none;border-radius:4px;background:rgba(255,255,255,0.25);color:#fff;cursor:pointer;font-size:13px;vertical-align:middle;';
+                b.onclick = function(e) { e.stopPropagation(); t.remove(); onRetry(); };
+                t.appendChild(b);
+            }
             c.appendChild(t);
-            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 3000);
+            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 4000);
         }
 
         async function fetchCSV(url) {
@@ -152,16 +164,19 @@
         async function updateData() {
             const nav = document.getElementById('updateNavBtn');
             const dateSpan = document.getElementById('updateDate');
+            const pb = document.getElementById('progressBar');
             if (!nav) return;
             nav.classList.add('disabled');
             nav.textContent = '⏳ 更新中...';
+            if (pb) pb.classList.add('active');
             try {
                 const res = await fetch('/api/update/all', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ok') {
                     nav.textContent = '⚡ 数据更新';
-                    showToast('更新失败: ' + data.message, 'error');
+                    showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
                     nav.classList.remove('disabled');
+                    if (pb) pb.classList.remove('active');
                     return;
                 }
                 const taskId = data.task_id;
@@ -170,6 +185,7 @@
                     const ps = await pr.json();
                     if (ps.status === 'done') {
                         clearInterval(poll);
+                        if (pb) pb.classList.remove('active');
                         nav.textContent = '✅ 更新完成';
                         if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
                         showToast('数据更新完成', 'success');
@@ -177,14 +193,16 @@
                     } else if (ps.status === 'error') {
                         clearInterval(poll);
                         nav.textContent = '⚡ 数据更新';
-                        showToast('更新失败: ' + (ps.error || '未知错误'), 'error');
+                        showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
                         nav.classList.remove('disabled');
+                        if (pb) pb.classList.remove('active');
                     }
                 }, 2000);
             } catch(e) {
-                showToast('请求失败: ' + e.message, 'error');
+                showToast('请求失败: ' + e.message, 'error', function() { updateData(); });
                 nav.classList.remove('disabled');
                 nav.textContent = '⚡ 数据更新';
+                if (pb) pb.classList.remove('active');
             }
         }
 
@@ -400,9 +418,18 @@
                 document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
             } catch (error) {
                 console.error('加载失败:', error);
-                showToast('加载数据失败', 'error');
+                showToast('加载数据失败', 'error', function() { location.reload(); });
             }
         }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'r' || e.key === 'R') { updateData(); return; }
+            if (e.key === '1') { location.href = 'track.html'; }
+            if (e.key === '2') { return; }
+            if (e.key === '3') { location.href = 'resonance.html'; }
+            if (e.key === '4') { location.href = 'analysis.html'; }
+        });
 
         init();
     </script>
