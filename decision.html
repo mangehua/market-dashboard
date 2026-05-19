@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>决策树</title>
+    <link rel="icon" href="logo.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-light: #3b82f6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #1e293b;
+            --gray: #64748b;
+            --light: #f8fafc;
+            --white: #ffffff;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--light);
+            color: var(--dark);
+            display: flex;
+            min-height: 100vh;
+        }
+        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; }
+        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; transition: all 0.2s; }
+        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
+        .nav-item.disabled { opacity:0.4; pointer-events:none; cursor:default; }
+        .nav-divider { border:none; border-top:1px solid var(--border); margin:8px 16px; }
+        .main { flex: 1; padding: 24px; overflow-x: auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .header .date { color: var(--gray); font-size: 13px; font-weight: 400; }
+        .update-btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background 0.2s; }
+        .update-btn:hover { background: var(--primary-light); }
+        .update-btn:disabled { background: var(--gray); cursor: not-allowed; }
+        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
+        .toast { padding:12px 20px; border-radius:8px; color:#fff; font-size:14px; margin-bottom:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); animation:toastIn .3s ease; max-width:400px; }
+        .toast.error { background:#ef4444; }
+        .toast.success { background:#10b981; }
+        .toast.warning { background:#f59e0b; }
+        @keyframes toastIn { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
+        @keyframes cardFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .progress-bar { position:fixed; top:0; left:0; right:0; z-index:9999; height:3px; background:var(--border); overflow:hidden; display:none; }
+        .progress-bar.active { display:block; }
+        .progress-bar-inner { height:100%; width:40%; background:linear-gradient(90deg,var(--primary),#818cf8); border-radius:2px; animation:pb-indeterminate 1.5s ease-in-out infinite; }
+        @keyframes pb-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
+
+        .step { display: none; }
+        .step.active { display: block; animation: cardFadeIn 0.3s ease both; }
+        .dim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .dim-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+        .dim-card .dim-label { font-size: 14px; color: var(--gray); margin-bottom: 8px; }
+        .dim-card .dim-desc { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+        .dim-card .dim-stat { font-size: 12px; color: var(--gray); }
+        .sentiment-row { display: flex; align-items: center; gap: 16px; padding: 16px 20px; background: var(--white); border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 32px; }
+        .sentiment-row .big-score { font-size: 32px; font-weight: 700; }
+        .sentiment-row .big-label { font-size: 20px; font-weight: 600; }
+        .stock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }
+        .stock-card {
+            background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow);
+            border: 2px solid var(--border); cursor: pointer; transition: all 0.2s; text-align: center;
+        }
+        .stock-card:hover { border-color: var(--primary-light); }
+        .stock-card.selected { border-color: var(--primary); background: #eff6ff; }
+        .stock-card .stock-name { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+        .stock-card .stock-code { font-size: 13px; color: var(--gray); }
+        .result-panel { background: var(--white); border-radius: 12px; padding: 24px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; }
+        .result-row { display: flex; align-items: center; gap: 24px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+        .result-row:last-child { border: none; }
+        .result-row .label { font-size: 14px; color: var(--gray); min-width: 80px; }
+        .result-row .value { font-size: 18px; font-weight: 600; }
+        .branch-list { display: grid; gap: 8px; margin-top: 16px; }
+        .branch {
+            background: var(--white); border-radius: 10px; padding: 14px 18px;
+            border: 1px solid var(--border); display: flex; align-items: center; gap: 12px;
+        }
+        .branch.current { border-color: var(--primary); background: #eff6ff; border-width: 2px; }
+        .branch .branch-l1 { font-weight: 600; min-width: 80px; }
+        .branch .branch-arrow { color: var(--gray); }
+        .branch .branch-l2 { min-width: 80px; }
+        .branch .branch-total { font-weight: 600; margin-left: auto; }
+        .actions { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+        .btn { padding: 10px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-light); }
+        .btn-outline { background: transparent; color: var(--gray); border: 1px solid var(--border); }
+        .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover { opacity: 0.9; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover { opacity: 0.9; }
+        .error-box { padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; color: var(--danger); text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">华夫饼手册</div>
+        <div class="nav-item" onclick="location.href='track.html'">共振分析</div>
+        <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
+        <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
+        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
+        <div class="nav-item active">决策树</div>
+        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
+        <hr class="nav-divider">
+        <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
+    </div>
+    <div class="main">
+        <div class="header">
+            <h1>决策树 <span class="subtitle" style="color:var(--gray);font-size:14px;font-weight:400;margin-left:8px;">大盘环境 → 个股定位 → 综合判定</span></h1>
+            <div class="header-right">
+                <span class="date" id="updateDate">加载中...</span>
+            </div>
+        </div>
+        <div class="progress-bar" id="progressBar"><div class="progress-bar-inner"></div></div>
+
+        <div id="step1" class="step active">
+            <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">大盘环境</h2>
+            <div id="l1Loading" style="color:var(--gray);padding:20px;">加载中...</div>
+            <div id="l1Panel" style="display:none;"></div>
+            <div class="actions" id="step1Actions" style="display:none;">
+                <button class="btn btn-primary" onclick="goToStep2()">开始分析 →</button>
+            </div>
+        </div>
+
+        <div id="step2" class="step">
+            <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">🎯 选择分析标的</h2>
+            <div id="stockGrid" class="stock-grid"></div>
+            <div class="actions">
+                <button class="btn btn-outline" onclick="goToStep1()">← 重新分析大盘</button>
+                <button class="btn btn-primary" id="confirmBtn" onclick="confirmAnalysis()" disabled>确认分析</button>
+            </div>
+        </div>
+
+        <div id="step3" class="step">
+            <h2 style="font-size:18px;font-weight:600;margin-bottom:16px;">🌳 决策树结论</h2>
+            <div id="resultPanel"></div>
+            <div class="actions">
+                <button class="btn btn-outline" onclick="goToStep2()">继续选择其他标的</button>
+                <button class="btn btn-danger" onclick="goToStep1()">退出</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const baseUrl = '.';
+        const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+        let stocks = [];
+        let selectedCode = null;
+        let l1Data = null;
+
+        function showToast(msg, type, onRetry) {
+            type = type || 'error';
+            var c = document.getElementById('toastContainer');
+            if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+            var t = document.createElement('div');
+            t.className = 'toast ' + type;
+            t.textContent = msg;
+            if (onRetry) {
+                var b = document.createElement('button');
+                b.textContent = '重试';
+                b.style.cssText = 'margin-left:12px;padding:4px 12px;border:none;border-radius:4px;background:rgba(255,255,255,0.25);color:#fff;cursor:pointer;font-size:13px;vertical-align:middle;';
+                b.onclick = function(e) { e.stopPropagation(); t.remove(); onRetry(); };
+                t.appendChild(b);
+            }
+            c.appendChild(t);
+            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 4000);
+        }
+
+        function showStep(n) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + n).classList.add('active');
+        }
+
+        async function fetchL1() {
+            try {
+                const res = await fetch(baseUrl + '/api/decision/l1');
+                const data = await res.json();
+                l1Data = data.l1;
+                stocks = data.stocks;
+                if (!l1Data) throw new Error('无数据');
+                renderL1(l1Data);
+                renderStocks(stocks);
+                document.getElementById('l1Loading').style.display = 'none';
+                document.getElementById('l1Panel').style.display = 'block';
+                document.getElementById('step1Actions').style.display = 'flex';
+                document.getElementById('updateDate').textContent = '数据已加载';
+            } catch (e) {
+                document.getElementById('l1Loading').textContent = '加载失败';
+                showToast('数据加载失败', 'error', function() { fetchL1(); });
+            }
+        }
+
+        function renderL1(l1) {
+            var panel = document.getElementById('l1Panel');
+            var html = '<div class="dim-grid">';
+            (l1.dims || []).forEach(function(d) {
+                var color = d.score > 0 ? '#10b981' : d.score < 0 ? '#ef4444' : '#f59e0b';
+                html += '<div class="dim-card"><div class="dim-label">' + d.label + '</div><div class="dim-desc" style="color:' + color + ';">' + d.desc + '</div><div class="dim-stat">' + d.signal_stats + '</div></div>';
+            });
+            html += '</div>';
+            var sent = l1.sentiment_raw !== null ? l1.sentiment_raw.toFixed(1) : '无数据';
+            html += '<div class="sentiment-row"><span class="big-score">' + sent + '</span><span class="big-label">' + l1.l1_emoji + ' ' + l1.l1_label + ' (' + (l1.l1_score >= 0 ? '+' : '') + l1.l1_score + ')</span></div>';
+            panel.innerHTML = html;
+        }
+
+        function renderStocks(list) {
+            var grid = document.getElementById('stockGrid');
+            grid.innerHTML = list.map(function(s) {
+                return '<div class="stock-card" data-code="' + s.code + '" data-name="' + s.name + '" onclick="selectStock(this)"><div class="stock-name">' + s.name + '</div><div class="stock-code">' + s.code + '</div></div>';
+            }).join('');
+        }
+
+        function selectStock(el) {
+            document.querySelectorAll('.stock-card').forEach(function(c) { c.classList.remove('selected'); });
+            el.classList.add('selected');
+            selectedCode = el.dataset.code;
+            selectedName = el.dataset.name;
+            document.getElementById('confirmBtn').disabled = false;
+        }
+
+        function goToStep1() {
+            showStep(1);
+            selectedCode = null;
+            document.getElementById('confirmBtn').disabled = true;
+        }
+
+        function goToStep2() {
+            showStep(2);
+            document.querySelectorAll('.stock-card').forEach(function(c) { c.classList.remove('selected'); });
+            selectedCode = null;
+            document.getElementById('confirmBtn').disabled = true;
+        }
+
+        async function confirmAnalysis() {
+            if (!selectedCode) return;
+            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
+            document.getElementById('confirmBtn').disabled = true;
+            document.getElementById('confirmBtn').textContent = '分析中...';
+            try {
+                const res = await fetch(baseUrl + '/api/decision/l2', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symbol_code: selectedCode, symbol_name: selectedName }),
+                });
+                const data = await res.json();
+                if (data.error) {
+                    showToast('数据不足，无法分析', 'error');
+                    document.getElementById('confirmBtn').disabled = false;
+                    document.getElementById('confirmBtn').textContent = '确认分析';
+                    return;
+                }
+                renderResult(data);
+                showStep(3);
+            } catch (e) {
+                showToast('分析失败', 'error', function() { confirmAnalysis(); });
+            }
+            document.getElementById('confirmBtn').disabled = false;
+            document.getElementById('confirmBtn').textContent = '确认分析';
+        }
+
+        function renderResult(d) {
+            var panel = document.getElementById('resultPanel');
+            function sc(c) { return c > 0 ? '#10b981' : c < 0 ? '#ef4444' : '#f59e0b'; }
+            function sign(s) { return s > 0 ? '+' + s : String(s); }
+            var html = '<div class="result-panel">';
+            html += '<div style="font-size:20px;font-weight:600;margin-bottom:16px;">' + d.name + ' (' + d.symbol + ')</div>';
+            html += '<div class="result-row"><span class="label">大盘环境</span><span class="value">' + d.layer1.emoji + ' ' + d.layer1.label + ' (' + sign(d.layer1.score) + ')</span></div>';
+            html += '<div class="result-row"><span class="label">个股定位</span><span class="value" style="color:' + sc(d.layer2.score) + ';">' + d.layer2.emoji + ' ' + d.layer2.label + ' (' + sign(d.layer2.score) + ')</span></div>';
+            var totalColor = sc(d.total_score);
+            html += '<div class="result-row"><span class="label">综合判定</span><span class="value" style="color:' + totalColor + ';">总分 ' + sign(d.total_score) + ' — ' + d.judgment + '</span></div>';
+            html += '</div>';
+
+            html += '<h3 style="font-size:16px;font-weight:600;margin-bottom:12px;">分支对比</h3><div class="branch-list">';
+            (d.tree || []).forEach(function(b) {
+                var cls = b.current ? 'branch current' : 'branch';
+                var l2c = b.l2_score > 0 ? '#10b981' : b.l2_score < 0 ? '#ef4444' : '#f59e0b';
+                var tc = b.total > 0 ? '#10b981' : b.total < 0 ? '#ef4444' : '#f59e0b';
+                html += '<div class="' + cls + '"><span class="branch-l1">' + b.l1_emoji + ' ' + b.l1_label + '</span><span class="branch-arrow">→</span><span class="branch-l2" style="color:' + l2c + ';">' + b.l2_emoji + ' ' + b.l2_label + '</span><span class="branch-total" style="color:' + tc + ';">' + sign(b.total) + ' ' + b.judgment + '</span></div>';
+            });
+            html += '</div></div>';
+            panel.innerHTML = html;
+        }
+
+        async function updateData() {
+            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
+            var nav = document.getElementById('updateNavBtn');
+            var pb = document.getElementById('progressBar');
+            if (!nav) return;
+            nav.classList.add('disabled');
+            nav.textContent = '⏳ 更新中...';
+            if (pb) pb.classList.add('active');
+            try {
+                var res = await fetch('/api/update/all', { method: 'POST' });
+                var data = await res.json();
+                if (data.status !== 'ok') {
+                    nav.textContent = '数据更新';
+                    showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
+                    nav.classList.remove('disabled');
+                    if (pb) pb.classList.remove('active');
+                    return;
+                }
+                var taskId = data.task_id;
+                var poll = setInterval(async function() {
+                    var pr = await fetch('/api/task/' + taskId);
+                    var pd = await pr.json();
+                    if (pd.status === 'done') {
+                        clearInterval(poll);
+                        nav.textContent = '数据更新';
+                        showToast('更新完成', 'success');
+                        nav.classList.remove('disabled');
+                        if (pb) pb.classList.remove('active');
+                        fetchL1();
+                    } else if (pd.status === 'error') {
+                        clearInterval(poll);
+                        nav.textContent = '数据更新';
+                        showToast('更新失败: ' + (pd.error || pd.message), 'error', function() { updateData(); });
+                        nav.classList.remove('disabled');
+                        if (pb) pb.classList.remove('active');
+                    }
+                }, 2000);
+            } catch (e) {
+                nav.textContent = '数据更新';
+                showToast('请求失败', 'error', function() { updateData(); });
+                nav.classList.remove('disabled');
+                if (pb) pb.classList.remove('active');
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'r' || e.key === 'R') { updateData(); return; }
+            if (e.key === '1') { location.href = 'track.html'; }
+            if (e.key === '2') { location.href = 'index.html'; }
+            if (e.key === '3') { location.href = 'resonance.html'; }
+            if (e.key === '4') { location.href = 'analysis.html'; }
+            if (e.key === '5') { return; }
+        });
+
+        fetchL1();
+    </script>
+</body>
+</html>
