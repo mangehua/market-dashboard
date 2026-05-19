@@ -1,4 +1,5 @@
 __pycache__/
 .opencode/
 stock_cache.pkl
-stock_data/stock_cache.pkl
+stock_data/stock_cache.pkloutput/
+StockApp/
