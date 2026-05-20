@@ -191,7 +191,10 @@
             const dateSpan = document.getElementById('updateDate');
             const pb = document.getElementById('progressBar');
             if (!nav) return;
-            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
+            if (IS_REMOTE) {
+                await remoteUpdateData();
+                return;
+            }
             nav.classList.add('disabled');
             nav.textContent = '⏳ 更新中...';
             if (pb) pb.classList.add('active');
@@ -410,157 +413,270 @@
             }
         }
 
-        async function init() {
-            try {
-                const [etfHistory, etfPs, szVwap, gameData, gamePs, stockData, stockPs] = await Promise.all([
-                    fetchCSV(`${baseUrl}/stock_data/历史价格_上证指数.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/压力支撑_上证指数.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/移动加权强弱线_上证指数.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/历史价格_游戏ETF.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/压力支撑_游戏ETF.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/历史价格_巨人网络.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/压力支撑_巨人网络.csv`)
-                ]);
-                
-                const recent30 = data => data.slice(-30);
-                const etfRecent = recent30(etfHistory);
-                const gameRecent = recent30(gameData);
-                const stockRecent = recent30(stockData);
-                
-                const latestEtf = etfRecent[etfRecent.length - 1];
-                const prevEtf = etfRecent[etfRecent.length - 2];
-                const latestGame = gameRecent[gameRecent.length - 1];
-                const prevGame = gameRecent[gameRecent.length - 2];
-                const latestStock = stockRecent[stockRecent.length - 1];
-                const prevStock = stockRecent[stockRecent.length - 2];
-                const etfCandles = [prevEtf, latestEtf].map(d => ({
-                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
-                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
-                }));
-                const gameCandles = [prevGame, latestGame].map(d => ({
-                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
-                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
-                }));
-                const stockCandles = [prevStock, latestStock].map(d => ({
-                    o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
-                    l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
-                }));
-                
-                const currentPrice = parseFloat(latestEtf['收盘']);
-                const prevPrice = parseFloat(prevEtf['收盘']);
-                const etfPsVals = etfPs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
-                let support = null, resistance = null;
-                for (let v of etfPsVals) {
-                    if (v < currentPrice) support = v;
-                    else if (!resistance) { resistance = v; break; }
-                }
-                if (!resistance) resistance = etfRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
-                if (!support) support = resistance;
-                
-                document.getElementById('marketPrice').textContent = currentPrice.toFixed(2);
-                document.getElementById('marketChange').textContent = '支撑 ' + support.toFixed(2) + ' | 压力 ' + resistance.toFixed(2);
-                drawMiniCandles('miniEtf', etfCandles, support, resistance);
-                
-                const gamePrice = parseFloat(latestGame['收盘']);
-                const gamePsVals = gamePs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
-                let gameSupport = null, gameResistance = null;
-                for (let v of gamePsVals) {
-                    if (v < gamePrice) gameSupport = v;
-                    else if (!gameResistance) { gameResistance = v; break; }
-                }
-                if (!gameResistance) gameResistance = gameRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
-                if (!gameSupport) gameSupport = gameResistance;
-                
-                document.getElementById('sectorPrice').textContent = gamePrice.toFixed(3);
-                document.getElementById('sectorChange').textContent = '支撑 ' + gameSupport.toFixed(3) + ' | 压力 ' + gameResistance.toFixed(3);
-                drawMiniCandles('miniGame', gameCandles, gameSupport, gameResistance);
-                
-                const stockPrice = parseFloat(latestStock['收盘']);
-                const stockPsVals = stockPs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
-                let stockSupport = null, stockResistance = null;
-                for (let v of stockPsVals) {
-                    if (v < stockPrice) stockSupport = v;
-                    else if (!stockResistance) { stockResistance = v; break; }
-                }
-                if (!stockResistance) stockResistance = stockRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
-                if (!stockSupport) stockSupport = stockResistance;
-                
-                document.getElementById('stockPrice').textContent = stockPrice.toFixed(2);
-                document.getElementById('stockChange').textContent = '支撑 ' + stockSupport.toFixed(2) + ' | 压力 ' + stockResistance.toFixed(2);
-                drawMiniCandles('miniStock', stockCandles, stockSupport, stockResistance);
-                
-                document.getElementById('updateDate').textContent = '最新数据: ' + latestEtf['日期'];
-                
-                const latestVwap = szVwap && szVwap.length > 0 ? parseFloat(szVwap[szVwap.length - 1]['移动VWAP']) : null;
+        async function fetchData(base) {
+            const [etfHistory, etfPs, szVwap, gameData, gamePs, stockData, stockPs] = await Promise.all([
+                fetchCSV(`${base}/stock_data/历史价格_上证指数.csv`),
+                fetchCSV(`${base}/stock_data/压力支撑_上证指数.csv`),
+                fetchCSV(`${base}/stock_data/移动加权强弱线_上证指数.csv`),
+                fetchCSV(`${base}/stock_data/历史价格_游戏ETF.csv`),
+                fetchCSV(`${base}/stock_data/压力支撑_游戏ETF.csv`),
+                fetchCSV(`${base}/stock_data/历史价格_巨人网络.csv`),
+                fetchCSV(`${base}/stock_data/压力支撑_巨人网络.csv`)
+            ]);
+            return { etfHistory, etfPs, szVwap, gameData, gamePs, stockData, stockPs };
+        }
 
-                function createChart(id, labels, priceData, psData, vwapValue, title) {
-                    const values = priceData.filter(v => v !== null && !isNaN(v));
-                    const minVal = Math.min(...values);
-                    const maxVal = Math.max(...values);
-                    const mean = (minVal + maxVal) / 2;
-                    const range = maxVal - minVal;
-                    const yMin = mean - 0.75 * range;
-                    const yMax = mean + 0.75 * range;
+        function renderUI(data) {
+            const { etfHistory, etfPs, szVwap, gameData, gamePs, stockData, stockPs } = data;
 
-                    const datasets = [{
-                        label: title, data: priceData, borderColor: '#2563eb',
-                        backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.4
-                    }];
-                    psData.forEach((ps, i) => {
-                        datasets.push({
-                            label: ps['指标'], data: Array(priceData.length).fill(parseFloat(ps['VWAP值'])),
-                            borderColor: i % 2 === 0 ? '#ef4444' : '#f59e0b',
-                            borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false,
-                            skipTooltip: true
-                        });
+            allCharts.forEach(c => c.destroy());
+            allCharts.length = 0;
+            syncIndex = -1;
+            isLocked = false;
+
+            const recent30 = d => d.slice(-30);
+            const etfRecent = recent30(etfHistory);
+            const gameRecent = recent30(gameData);
+            const stockRecent = recent30(stockData);
+
+            const latestEtf = etfRecent[etfRecent.length - 1];
+            const prevEtf = etfRecent[etfRecent.length - 2];
+            const latestGame = gameRecent[gameRecent.length - 1];
+            const prevGame = gameRecent[gameRecent.length - 2];
+            const latestStock = stockRecent[stockRecent.length - 1];
+            const prevStock = stockRecent[stockRecent.length - 2];
+
+            const toCandle = (p, l) => [p, l].map(d => ({
+                o: parseFloat(d['开盘']), h: parseFloat(d['最高']),
+                l: parseFloat(d['最低']), c: parseFloat(d['收盘'])
+            }));
+            const etfCandles = toCandle(prevEtf, latestEtf);
+            const gameCandles = toCandle(prevGame, latestGame);
+            const stockCandles = toCandle(prevStock, latestStock);
+
+            const currentPrice = parseFloat(latestEtf['收盘']);
+            const etfPsVals = etfPs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
+            let support = null, resistance = null;
+            for (let v of etfPsVals) {
+                if (v < currentPrice) support = v;
+                else if (!resistance) { resistance = v; break; }
+            }
+            if (!resistance) resistance = etfRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
+            if (!support) support = resistance;
+
+            document.getElementById('marketPrice').textContent = currentPrice.toFixed(2);
+            document.getElementById('marketChange').textContent = '支撑 ' + support.toFixed(2) + ' | 压力 ' + resistance.toFixed(2);
+            drawMiniCandles('miniEtf', etfCandles, support, resistance);
+
+            const gamePrice = parseFloat(latestGame['收盘']);
+            const gamePsVals = gamePs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
+            let gameSupport = null, gameResistance = null;
+            for (let v of gamePsVals) {
+                if (v < gamePrice) gameSupport = v;
+                else if (!gameResistance) { gameResistance = v; break; }
+            }
+            if (!gameResistance) gameResistance = gameRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
+            if (!gameSupport) gameSupport = gameResistance;
+
+            document.getElementById('sectorPrice').textContent = gamePrice.toFixed(3);
+            document.getElementById('sectorChange').textContent = '支撑 ' + gameSupport.toFixed(3) + ' | 压力 ' + gameResistance.toFixed(3);
+            drawMiniCandles('miniGame', gameCandles, gameSupport, gameResistance);
+
+            const stockPrice = parseFloat(latestStock['收盘']);
+            const stockPsVals = stockPs.map(d => parseFloat(d['VWAP值'])).sort((a, b) => a - b);
+            let stockSupport = null, stockResistance = null;
+            for (let v of stockPsVals) {
+                if (v < stockPrice) stockSupport = v;
+                else if (!stockResistance) { stockResistance = v; break; }
+            }
+            if (!stockResistance) stockResistance = stockRecent.reduce((max, d) => Math.max(max, parseFloat(d['最高'])), 0);
+            if (!stockSupport) stockSupport = stockResistance;
+
+            document.getElementById('stockPrice').textContent = stockPrice.toFixed(2);
+            document.getElementById('stockChange').textContent = '支撑 ' + stockSupport.toFixed(2) + ' | 压力 ' + stockResistance.toFixed(2);
+            drawMiniCandles('miniStock', stockCandles, stockSupport, stockResistance);
+
+            document.getElementById('updateDate').textContent = '最新数据: ' + latestEtf['日期'];
+
+            const latestVwap = szVwap && szVwap.length > 0 ? parseFloat(szVwap[szVwap.length - 1]['移动VWAP']) : null;
+
+            function createChart(id, labels, priceData, psData, vwapValue, title) {
+                const values = priceData.filter(v => v !== null && !isNaN(v));
+                const minVal = Math.min(...values);
+                const maxVal = Math.max(...values);
+                const mean = (minVal + maxVal) / 2;
+                const range = maxVal - minVal;
+                const yMin = mean - 0.75 * range;
+                const yMax = mean + 0.75 * range;
+
+                const datasets = [{
+                    label: title, data: priceData, borderColor: '#2563eb',
+                    backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.4
+                }];
+                psData.forEach((ps, i) => {
+                    datasets.push({
+                        label: ps['指标'], data: Array(priceData.length).fill(parseFloat(ps['VWAP值'])),
+                        borderColor: i % 2 === 0 ? '#ef4444' : '#f59e0b',
+                        borderDash: [5, 5], borderWidth: 1, pointRadius: 0, fill: false,
+                        skipTooltip: true
                     });
-                    if (vwapValue !== null && !isNaN(vwapValue)) {
-                        datasets.push({
-                            label: '强弱分界', data: Array(priceData.length).fill(vwapValue),
-                            borderColor: '#10b981', borderDash: [5, 5], borderWidth: 2.5, pointRadius: 0, fill: false,
-                            skipTooltip: true
-                        });
-                    }
-                     
-                    const chart = new Chart(document.getElementById(id), {
-                        type: 'line', data: { labels, datasets },
-                        options: {
-                            responsive: true, maintainAspectRatio: false,
-                            plugins: { 
-                                legend: { position: 'bottom' }, 
-                                tooltip: { 
-                                    mode: 'index', 
-                                    intersect: false,
-                                    filter: (tooltipItem) => {
-                                        return !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip;
-                                    }
-                                } 
-                            },
-                            interaction: { mode: 'index', intersect: false },
-                            scales: { y: { min: yMin, max: yMax } },
-                            onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
-                            onHover: (event, elements) => {
-                                if (!isLocked) {
-                                    if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
-                                    else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                });
+                if (vwapValue !== null && !isNaN(vwapValue)) {
+                    datasets.push({
+                        label: '强弱分界', data: Array(priceData.length).fill(vwapValue),
+                        borderColor: '#10b981', borderDash: [5, 5], borderWidth: 2.5, pointRadius: 0, fill: false,
+                        skipTooltip: true
+                    });
+                }
+
+                const chart = new Chart(document.getElementById(id), {
+                    type: 'line', data: { labels, datasets },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                filter: (tooltipItem) => {
+                                    return !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip;
                                 }
                             }
                         },
-                        plugins: [crosshairPlugin]
-                    });
-                    allCharts.push(chart);
-                }
-                
-                createChart('assetChart', etfRecent.map(d => d['日期']), etfRecent.map(d => parseFloat(d['收盘'])), etfPs, latestVwap, '上证指数');
-                createChart('gameChart', gameRecent.map(d => d['日期']), gameRecent.map(d => parseFloat(d['收盘'])), gamePs, null, '游戏ETF');
-                createChart('equityChart', stockRecent.map(d => d['日期']), stockRecent.map(d => parseFloat(d['收盘'])), stockPs, null, '巨人网络');
-                document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
+                        interaction: { mode: 'index', intersect: false },
+                        scales: { y: { min: yMin, max: yMax } },
+                        onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
+                        onHover: (event, elements) => {
+                            if (!isLocked) {
+                                if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
+                                else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            }
+                        }
+                    },
+                    plugins: [crosshairPlugin]
+                });
+                allCharts.push(chart);
+            }
+
+            createChart('assetChart', etfRecent.map(d => d['日期']), etfRecent.map(d => parseFloat(d['收盘'])), etfPs, latestVwap, '上证指数');
+            createChart('gameChart', gameRecent.map(d => d['日期']), gameRecent.map(d => parseFloat(d['收盘'])), gamePs, null, '游戏ETF');
+            createChart('equityChart', stockRecent.map(d => d['日期']), stockRecent.map(d => parseFloat(d['收盘'])), stockPs, null, '巨人网络');
+            document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
+        }
+
+        async function init() {
+            try {
+                const data = await fetchData(baseUrl);
+                renderUI(data);
             } catch (error) {
                 console.error('加载失败:', error);
                 showToast('加载数据失败', 'error', function() { location.reload(); });
             }
         }
-        
+
+        async function remoteUpdateData() {
+            const now = new Date();
+            const h = (now.getUTCHours() + 8) % 24;
+            const m = now.getUTCMinutes();
+            const curr = h + m / 60;
+
+            const isAfternoon = curr >= 11.5 && curr < 13;
+            const isTail = curr >= 14 + 50/60 && curr < 15.5;
+            const today = now.toDateString();
+
+            let quota = JSON.parse(localStorage.getItem('remote_quota') || '{}');
+            if (quota.date !== today) quota = { date: today, afternoon: 0, tail: 0 };
+
+            if (!isAfternoon && !isTail) {
+                showToast('更新时段：午盘 11:30-13:00（余' + (3 - quota.afternoon) + '次）| 尾盘 14:50-15:30（余' + (3 - quota.tail) + '次）', 'warning');
+                return;
+            }
+
+            const slot = isAfternoon ? 'afternoon' : 'tail';
+            const slotName = isAfternoon ? '午盘' : '尾盘';
+            const otherSlot = isAfternoon ? 'tail' : 'afternoon';
+            const otherName = isAfternoon ? '尾盘' : '午盘';
+
+            if (quota[slot] >= 3) {
+                if (quota[otherSlot] < 3) {
+                    showToast('今日' + slotName + '已用完，' + otherName + '(14:50-15:30)余' + (3 - quota[otherSlot]) + '次', 'warning');
+                } else {
+                    showToast('今日午盘和尾盘均已用完，明日重置', 'warning');
+                }
+                return;
+            }
+
+            const nav = document.getElementById('updateNavBtn');
+            const dateSpan = document.getElementById('updateDate');
+            const pb = document.getElementById('progressBar');
+            nav.classList.add('disabled');
+            nav.textContent = '远程更新中...';
+            if (pb) pb.classList.add('active');
+
+            try {
+                const GITHUB_RAW = 'https://raw.githubusercontent.com/mangehua/market-dashboard/main';
+                const data = await fetchData(GITHUB_RAW);
+
+                const symbols = ['sh000001', 'sh516770', 'sz002558'];
+                const names = ['etfHistory', 'gameData', 'stockData'];
+                let hasTencentData = false;
+                for (let i = 0; i < symbols.length; i++) {
+                    try {
+                        const res = await fetch('https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=' + symbols[i] + ',day,,,3,qfqa');
+                        const json = await res.json();
+                        const dayArr = json.data && json.data[symbols[i]] && json.data[symbols[i]].day;
+                        if (!dayArr || dayArr.length === 0) continue;
+                        const apiRow = dayArr[dayArr.length - 1];
+                        if (!apiRow || apiRow.length < 6) continue;
+                        const arr = data[names[i]];
+                        if (!arr || arr.length === 0) continue;
+                        const newRow = {
+                            '日期': apiRow[0],
+                            '股票代码': arr[arr.length - 1]['股票代码'],
+                            '收盘': apiRow[2],
+                            '开盘': apiRow[1],
+                            '最高': apiRow[3],
+                            '最低': apiRow[4],
+                            '成交量': apiRow[5],
+                            '成交额': '0'
+                        };
+                        if (arr[arr.length - 1]['日期'] === newRow['日期']) {
+                            arr[arr.length - 1] = newRow;
+                        } else if (arr[arr.length - 1]['日期'] < newRow['日期']) {
+                            arr.push(newRow);
+                        }
+                        hasTencentData = true;
+                    } catch (e) {}
+                }
+
+                renderUI(data);
+
+                quota[slot]++;
+                localStorage.setItem('remote_quota', JSON.stringify(quota));
+
+                const remaining = 3 - quota[slot];
+                nav.textContent = slotName + '余' + remaining + '次';
+                if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
+
+                if (hasTencentData) {
+                    showToast(slotName + '更新完成，盘中更新配额余' + remaining + '次', 'success');
+                } else {
+                    showToast(slotName + '更新完成，今日盘中数据暂未生成', 'success');
+                }
+
+                setTimeout(function() {
+                    if (nav.textContent.indexOf('余') > -1) nav.textContent = '数据更新';
+                }, 5000);
+
+            } catch (e) {
+                showToast('数据拉取失败，请检查网络后重试', 'error', function() { remoteUpdateData(); });
+                nav.textContent = '数据更新';
+            }
+
+            nav.classList.remove('disabled');
+            if (pb) pb.classList.remove('active');
+        }
+
         document.addEventListener('keydown', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
