@@ -72,9 +72,9 @@
 <body>
     <div class="sidebar">
         <div class="logo">华夫饼手册</div>
-        <div class="nav-item" onclick="location.href='track.html'">共振分析</div>
+        <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
         <div class="nav-item active">图谱分析</div>
-        <div class="nav-item" onclick="location.href='resonance.html'">背离分析</div>
+        <div class="nav-item" onclick="location.href='track.html'">背离分析</div>
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
         <div class="nav-item" onclick="location.href='decision.html'">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>        <hr class="nav-divider">
@@ -424,9 +424,9 @@
         document.addEventListener('keydown', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
-            if (e.key === '1') { location.href = 'track.html'; }
+            if (e.key === '1') { location.href = 'resonance.html'; }
             if (e.key === '2') { return; }
-            if (e.key === '3') { location.href = 'resonance.html'; }
+            if (e.key === '3') { location.href = 'track.html'; }
             if (e.key === '4') { location.href = 'analysis.html'; }
             if (e.key === '5') { location.href = 'decision.html'; }
         });
