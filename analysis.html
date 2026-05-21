@@ -128,6 +128,16 @@
         </div>
 
         <div class="chart-card">
+            <div class="chart-title">主板涨跌停</div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="limitMainChart"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">创业+科创+北交所涨跌停</div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="limitOtherChart"></canvas></div>
+        </div>
+
+        <div class="chart-card">
             <div class="chart-title">全市场成交额</div>
             <div class="chart-container"><div class="sk-overlay"></div><canvas id="volumeChart"></canvas></div>
         </div>
@@ -513,6 +523,80 @@
                     plugins: [crosshairPlugin]
                 });
                 allCharts.push(c2);
+
+                // 主板涨跌停
+                const avgMainUp = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_up_main'] || 0),0) / m60.length);
+                const avgMainDown = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_down_main'] || 0),0) / m60.length);
+                const c3 = new Chart(document.getElementById('limitMainChart'), {
+                    type: 'line',
+                    data: {
+                        labels: m60.map(d => d['date']),
+                        datasets: [
+                            { label: '主板涨停', data: m60.map(d => parseInt(d['limit_up_main'] || 0)), borderColor: '#ef4444', tension: 0.4, pointRadius: 2 },
+                            { label: '主板跌停', data: m60.map(d => parseInt(d['limit_down_main'] || 0)), borderColor: '#10b981', tension: 0.4, pointRadius: 2 },
+                            { label: '主板涨停均值:' + avgMainUp, data: Array(60).fill(avgMainUp), borderColor: '#ef4444', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, skipTooltip: true },
+                            { label: '主板跌停均值:' + avgMainDown, data: Array(60).fill(avgMainDown), borderColor: '#10b981', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, skipTooltip: true }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: false } },
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                filter: (tooltipItem) => !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false },
+                        onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
+                        onHover: (event, elements) => {
+                            if (!isLocked) {
+                                if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
+                                else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            }
+                        }
+                    },
+                    plugins: [crosshairPlugin]
+                });
+                allCharts.push(c3);
+
+                // 其他板块涨跌停
+                const avgOtherUp = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_up_other'] || 0),0) / m60.length);
+                const avgOtherDown = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_down_other'] || 0),0) / m60.length);
+                const c5 = new Chart(document.getElementById('limitOtherChart'), {
+                    type: 'line',
+                    data: {
+                        labels: m60.map(d => d['date']),
+                        datasets: [
+                            { label: '创业+科创+北交涨停', data: m60.map(d => parseInt(d['limit_up_other'] || 0)), borderColor: '#f97316', tension: 0.4, pointRadius: 2 },
+                            { label: '创业+科创+北交跌停', data: m60.map(d => parseInt(d['limit_down_other'] || 0)), borderColor: '#06b6d4', tension: 0.4, pointRadius: 2 },
+                            { label: '其他涨停均值:' + avgOtherUp, data: Array(60).fill(avgOtherUp), borderColor: '#f97316', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, skipTooltip: true },
+                            { label: '其他跌停均值:' + avgOtherDown, data: Array(60).fill(avgOtherDown), borderColor: '#06b6d4', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, skipTooltip: true }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { y: { beginAtZero: false } },
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                filter: (tooltipItem) => !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false },
+                        onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
+                        onHover: (event, elements) => {
+                            if (!isLocked) {
+                                if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
+                                else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            }
+                        }
+                    },
+                    plugins: [crosshairPlugin]
+                });
+                allCharts.push(c5);
 
                 const v60 = volume.slice(-60);
                 const volValues = v60.map(d => parseFloat(d['成交额(元)'] || 0)/1e11).filter(v => !isNaN(v));
