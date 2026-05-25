@@ -80,9 +80,8 @@
         <div class="logo">华夫饼手册</div>
         <div class="nav-item active">共振分析</div>
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
-        <div class="nav-item" onclick="location.href='track.html'">背离分析</div>
+        <div class="nav-item" onclick="navigateTrack()">背离分析</div>
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>        <hr class="nav-divider">
         <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
     </div>
@@ -154,6 +153,20 @@
         const baseUrl = '.';
         const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
         
+        let _trackClickCount = 0;
+        let _trackClickTimer = null;
+        function navigateTrack() {
+            _trackClickCount++;
+            if (_trackClickTimer) clearTimeout(_trackClickTimer);
+            _trackClickTimer = setTimeout(() => { _trackClickCount = 0; }, 2000);
+            if (_trackClickCount >= 5) {
+                _trackClickCount = 0;
+                location.href = 'track.html';
+            } else {
+                showToast('该功能暂未开放', 'warning');
+            }
+        }
+
         function showToast(msg, type, onRetry) {
             type = type || 'error';
             var c = document.getElementById('toastContainer');
@@ -682,9 +695,8 @@
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
             if (e.key === '1') { return; }
             if (e.key === '2') { location.href = 'index.html'; }
-            if (e.key === '3') { location.href = 'track.html'; }
+            if (e.key === '3') { showToast('该功能暂未开放', 'warning'); return; }
             if (e.key === '4') { location.href = 'analysis.html'; }
-            if (e.key === '5') { showToast('该功能暂未开放', 'warning'); return; }
         });
 
         init();
