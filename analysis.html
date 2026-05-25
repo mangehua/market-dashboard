@@ -82,7 +82,7 @@
         <div class="logo">华夫饼手册</div>
         <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
-        <div class="nav-item" onclick="navigateTrack()">背离分析</div>
+        <div class="nav-item" onclick="location.href='track.html'">周期研判</div>
         <div class="nav-item active">信号收集</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
@@ -137,28 +137,19 @@
         </div>
 
         <div class="chart-card">
-            <div class="chart-title">市场中位涨跌幅 vs 成交额涨跌量(5日累计)</div>
+            <div class="chart-title">市场中位涨跌幅(5日累计)</div>
             <div class="chart-container"><div class="sk-overlay"></div><canvas id="marketVolumeCumChart"></canvas></div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">全市场成交额 <span style="color:var(--gray);font-size:13px;font-weight:400;">柱: 日成交额 / 线: 60日均值(强弱分界)</span></div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="volumeChart"></canvas></div>
         </div>
     </div>
 
     <script>
         const baseUrl = '.';
         const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-
-        let _trackClickCount = 0;
-        let _trackClickTimer = null;
-        function navigateTrack() {
-            _trackClickCount++;
-            if (_trackClickTimer) clearTimeout(_trackClickTimer);
-            _trackClickTimer = setTimeout(() => { _trackClickCount = 0; }, 2000);
-            if (_trackClickCount >= 5) {
-                _trackClickCount = 0;
-                location.href = 'track.html';
-            } else {
-                showToast('该功能暂未开放', 'warning');
-            }
-        }
 
         function showToast(msg, type, onRetry) {
             type = type || 'error';
@@ -581,50 +572,25 @@
                 const volByDate = {};
                 volume.forEach(d => volByDate[d['日期']] = parseFloat(d['成交额(元)'] || 0) / 1e11);
                 const volMatched60 = m60.map(d => volByDate[d['date']] || null);
-                const volDeltaDaily = [];
-                for (let i = 0; i < volMatched60.length; i++) {
-                    if (i === 0 || volMatched60[i] === null || volMatched60[i-1] === null) {
-                        volDeltaDaily.push(null);
-                    } else {
-                        volDeltaDaily.push(volMatched60[i] - volMatched60[i-1]);
-                    }
-                }
-                const volDelta5 = volDeltaDaily.map((_, i) => {
-                    const a = volMatched60[i];
-                    const b = i >= 5 ? volMatched60[i - 5] : null;
-                    return a !== null && b !== null ? a - b : null;
-                });
                 const medLine = m60.map(d => parseFloat(d['median_change'] || 0));
                 const labels60 = m60.map(d => d['date']);
 
-                const vol5Colors = volDelta5.map(v => v === null ? 'transparent' : v >= 0 ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)');
                 const c6 = new Chart(document.getElementById('marketVolumeCumChart'), {
-                    type: 'bar',
+                    type: 'line',
                     data: {
                         labels: labels60,
                         datasets: [
                             {
-                                type: 'line',
                                 label: '中位数涨跌幅',
                                 data: medLine,
                                 borderColor: '#8b5cf6', tension: 0.4, pointRadius: 2, yAxisID: 'y'
-                            },
-                            {
-                                type: 'bar',
-                                label: '成交额涨跌量(5日累计,千亿)',
-                                data: volDelta5,
-                                backgroundColor: vol5Colors,
-                                borderColor: vol5Colors,
-                                borderWidth: 0,
-                                yAxisID: 'y1'
                             }
                         ]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         scales: {
-                            y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } },
-                            y1: { position: 'right', title: { display: true, text: '5日累计(千亿)' }, grid: { drawOnChartArea: false } }
+                            y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } }
                         },
                         plugins: {
                             legend: { position: 'bottom' },
@@ -634,10 +600,7 @@
                                     label: function(ctx) {
                                         if (ctx.parsed.y === null) return '';
                                         const v = ctx.parsed.y;
-                                        if (ctx.dataset.type === 'line') {
-                                            return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-                                        }
-                                        return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2);
+                                        return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
                                     }
                                 }
                             }
@@ -654,6 +617,82 @@
                     plugins: [crosshairPlugin]
                 });
                 allCharts.push(c6);
+
+                // 成交量 standalone chart (with 强弱分界)
+                const volAvgMatched = m60.map(d => {
+                    const v = volByDate[d['date']];
+                    return v !== null ? v : null;
+                });
+                const volMA60 = [];
+                volume.forEach(d => {
+                    const dt = d['日期'];
+                    const m60val = parseFloat(d['成交额60日均值'] || 0) / 1e11;
+                    volByDate[dt + '_ma'] = m60val;
+                });
+                const volMA60matched = m60.map(d => volByDate[d['date'] + '_ma'] || null);
+
+                const volColors = volAvgMatched.map((v, i) => v === null ? 'transparent' : v >= volMA60matched[i] ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)');
+                const c7 = new Chart(document.getElementById('volumeChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels60,
+                        datasets: [
+                            {
+                                type: 'bar',
+                                label: '成交额(千亿)',
+                                data: volAvgMatched,
+                                backgroundColor: volColors,
+                                borderColor: volColors,
+                                borderWidth: 0,
+                                yAxisID: 'y',
+                                order: 2
+                            },
+                            {
+                                type: 'line',
+                                label: '60日均值(强弱分界)',
+                                data: volMA60matched,
+                                borderColor: '#f59e0b',
+                                borderWidth: 2,
+                                borderDash: [6, 3],
+                                pointRadius: 0,
+                                yAxisID: 'y',
+                                order: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { position: 'left', title: { display: true, text: '成交额(千亿)' } }
+                        },
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        if (ctx.parsed.y === null) return '';
+                                        const v = ctx.parsed.y;
+                                        if (ctx.dataset.label === '60日均值(强弱分界)') {
+                                            return ctx.dataset.label + ': ' + v.toFixed(2) + ' 千亿';
+                                        }
+                                        return ctx.dataset.label + ': ' + v.toFixed(2) + ' 千亿';
+                                    }
+                                }
+                            }
+                        },
+                        interaction: { mode: 'index', intersect: false },
+                        onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
+                        onHover: (event, elements) => {
+                            if (!isLocked) {
+                                if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
+                                else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            }
+                        }
+                    },
+                    plugins: [crosshairPlugin]
+                });
+                allCharts.push(c7);
                 document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
             } catch (e) {
                 console.error('Error loading data:', e);
@@ -666,7 +705,7 @@
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
             if (e.key === '1') { location.href = 'resonance.html'; }
             if (e.key === '2') { location.href = 'index.html'; }
-            if (e.key === '3') { showToast('该功能暂未开放', 'warning'); return; }
+            if (e.key === '3') { location.href = 'track.html'; return; }
             if (e.key === '4') { return; }
         });
 
