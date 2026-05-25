@@ -318,8 +318,8 @@
                 }
                 const medP20 = percentile(medVals, 20);
                 const medP80 = percentile(medVals, 80);
-                const volP20 = percentile(volDeltas, 20);
-                const volP80 = percentile(volDeltas, 80);
+                const volP20 = percentile(volDelta5, 20);
+                const volP80 = percentile(volDelta5, 80);
 
                 let redCnt = 0, greenCnt = 0;
                 let redUp = 0, redTot = 0, greenDown = 0, greenTot = 0;
@@ -329,16 +329,16 @@
                 let redSum3 = 0, greenSum3 = 0;
 
                 for (let i = 0; i < medVals.length; i++) {
-                    const m = medVals[i], v = volDeltas[i];
+                    const m = medVals[i], v = volDelta5[i];
                     if (m === null || v === null) continue;
 
                     if (m < medP20 && v > volP80) {
                         redCnt++;
-                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDeltas[i+1] !== null) {
+                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDelta5[i+1] !== null) {
                             redTot++;
                             if (medVals[i+1] > 0) { redUp++; redWinCnt++; redWinSum += medVals[i+1]; }
                             else { redLossCnt++; redLossSum += medVals[i+1]; }
-                            if (volDeltas[i+1] > 0) redConf++;
+                            if (volDelta5[i+1] > 0) redConf++;
                             redConfTot++;
                         }
                         if (i + 3 < medVals.length) {
@@ -353,11 +353,11 @@
 
                     if (m > medP80 && v < volP20) {
                         greenCnt++;
-                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDeltas[i+1] !== null) {
+                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDelta5[i+1] !== null) {
                             greenTot++;
                             if (medVals[i+1] < 0) { greenDown++; greenWinCnt++; greenWinSum += medVals[i+1]; }
                             else { greenLossCnt++; greenLossSum += medVals[i+1]; }
-                            if (volDeltas[i+1] < 0) greenConf++;
+                            if (volDelta5[i+1] < 0) greenConf++;
                             greenConfTot++;
                         }
                         if (i + 3 < medVals.length) {
@@ -409,14 +409,14 @@
                 document.getElementById('freqGreenDays').textContent = greenCnt > 0 ? (nWindow / greenCnt).toFixed(1) : '-';
 
                 const pointR = medVals.map((m, i) => {
-                    const v = volDeltas[i];
+                    const v = volDelta5[i];
                     if (m === null || v === null) return 2;
                     if (m < medP20 && v > volP80) return 7;
                     if (m > medP80 && v < volP20) return 7;
                     return 2;
                 });
                 const pointC = medVals.map((m, i) => {
-                    const v = volDeltas[i];
+                    const v = volDelta5[i];
                     if (m === null || v === null) return '#8b5cf6';
                     if (m < medP20 && v > volP80) return '#ef4444';
                     if (m > medP80 && v < volP20) return '#10b981';
