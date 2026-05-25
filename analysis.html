@@ -82,9 +82,8 @@
         <div class="logo">华夫饼手册</div>
         <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
-        <div class="nav-item" onclick="location.href='track.html'">背离分析</div>
+        <div class="nav-item" onclick="navigateTrack()">背离分析</div>
         <div class="nav-item active">信号收集</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
         <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
@@ -118,8 +117,13 @@
         </div>
 
         <div class="chart-card">
-            <div class="chart-title">中位数涨跌幅</div>
-            <div class="chart-container"><div class="sk-overlay"></div><canvas id="marketChart"></canvas></div>
+            <div class="chart-title">五维信号评分</div>
+            <div id="breakdownTable"></div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-title">上证指数 vs 市场中位数累计净值</div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="shIndexChart"></canvas></div>
         </div>
 
         <div class="chart-card">
@@ -133,18 +137,28 @@
         </div>
 
         <div class="chart-card">
-            <div class="chart-title">全市场成交额</div>
-            <div class="chart-container"><div class="sk-overlay"></div><canvas id="volumeChart"></canvas></div>
-        </div>
-        <div class="chart-card">
-            <div class="chart-title">五维信号评分</div>
-            <div id="breakdownTable"></div>
+            <div class="chart-title">市场中位涨跌幅 vs 成交额涨跌量(5日累计)</div>
+            <div class="chart-container"><div class="sk-overlay"></div><canvas id="marketVolumeCumChart"></canvas></div>
         </div>
     </div>
 
     <script>
         const baseUrl = '.';
         const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+        let _trackClickCount = 0;
+        let _trackClickTimer = null;
+        function navigateTrack() {
+            _trackClickCount++;
+            if (_trackClickTimer) clearTimeout(_trackClickTimer);
+            _trackClickTimer = setTimeout(() => { _trackClickCount = 0; }, 2000);
+            if (_trackClickCount >= 5) {
+                _trackClickCount = 0;
+                location.href = 'track.html';
+            } else {
+                showToast('该功能暂未开放', 'warning');
+            }
+        }
 
         function showToast(msg, type, onRetry) {
             type = type || 'error';
@@ -444,28 +458,36 @@
 
                 // 图表
                 const m60 = market.slice(-60);
-                const median60 = m60.map(d => parseFloat(d['median_change'] || 0));
-                const avgMed = median60.reduce((s, v) => s + v, 0) / median60.length;
-
-                const c1 = new Chart(document.getElementById('marketChart'), {
+                const shMap = {};
+                szPrice.forEach(d => shMap[d['日期']] = parseFloat(d['收盘']));
+                const sh60 = m60.map(d => shMap[d['date']] || null);
+                const cumMed = [100];
+                let cum = 100;
+                for (let i = 1; i < m60.length; i++) {
+                    cum = cum * (1 + parseFloat(m60[i]['median_change'] || 0) / 100);
+                    cumMed.push(cum);
+                }
+                const shNorm = sh60.map(v => v !== null && sh60[0] !== null ? 100 * v / sh60[0] : null);
+                const c0 = new Chart(document.getElementById('shIndexChart'), {
                     type: 'line',
                     data: {
                         labels: m60.map(d => d['date']),
                         datasets: [
-                            { label: '中位数涨跌幅', data: median60, borderColor: '#8b5cf6', tension: 0.4, pointRadius: 2 },
-                            { label: '均值:' + avgMed.toFixed(2) + '%', data: Array(60).fill(avgMed), borderColor: '#8b5cf6', borderDash: [5,5], borderWidth: 1, pointRadius: 0, skipTooltip: true }
+                            { label: '中位数累计净值', data: cumMed, borderColor: '#8b5cf6', tension: 0.4, pointRadius: 0, borderWidth: 2 },
+                            { label: '上证指数(归一)', data: shNorm, borderColor: '#ef4444', tension: 0.4, pointRadius: 0, borderWidth: 1.5, borderDash: [4,3] }
                         ]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
+                        scales: { y: { title: { display: true, text: '净值(基日=100)' } } },
                         plugins: {
                             legend: { position: 'bottom' },
                             tooltip: {
                                 mode: 'index', intersect: false,
-                                filter: (tooltipItem) => !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip,
                                 callbacks: {
                                     label: function(ctx) {
-                                        return ctx.dataset.label + ': ' + (ctx.parsed.y >= 0 ? '+' : '') + ctx.parsed.y.toFixed(2) + '%';
+                                        if (ctx.parsed.y === null) return '';
+                                        return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(2);
                                     }
                                 }
                             }
@@ -481,7 +503,7 @@
                     },
                     plugins: [crosshairPlugin]
                 });
-                allCharts.push(c1);
+                allCharts.push(c0);
 
                 const avgLimitUp60 = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_up'] || 0),0) / m60.length);
                 const avgLimitDown60 = Math.round(m60.reduce((s, d) => s + parseInt(d['limit_down'] || 0),0) / m60.length);
@@ -556,34 +578,68 @@
                 });
                 allCharts.push(c5);
 
-                const v60 = volume.slice(-60);
-                const volValues = v60.map(d => parseFloat(d['成交额(元)'] || 0)/1e11).filter(v => !isNaN(v));
-                const avgAmt = Math.round(volValues.reduce((s, v) => s + v, 0) / volValues.length * 100) / 100;
-                const minVal = Math.min(...volValues);
-                const maxVal = Math.max(...volValues);
-                const range = maxVal - minVal;
-                const yMin = Math.max(0, avgAmt - 0.75 * range);
-                const yMax = avgAmt + 0.75 * range;
+                const volByDate = {};
+                volume.forEach(d => volByDate[d['日期']] = parseFloat(d['成交额(元)'] || 0) / 1e11);
+                const volMatched60 = m60.map(d => volByDate[d['date']] || null);
+                const volDeltaDaily = [];
+                for (let i = 0; i < volMatched60.length; i++) {
+                    if (i === 0 || volMatched60[i] === null || volMatched60[i-1] === null) {
+                        volDeltaDaily.push(null);
+                    } else {
+                        volDeltaDaily.push(volMatched60[i] - volMatched60[i-1]);
+                    }
+                }
+                const volDelta5 = volDeltaDaily.map((_, i) => {
+                    const a = volMatched60[i];
+                    const b = i >= 5 ? volMatched60[i - 5] : null;
+                    return a !== null && b !== null ? a - b : null;
+                });
+                const medLine = m60.map(d => parseFloat(d['median_change'] || 0));
+                const labels60 = m60.map(d => d['date']);
 
-                const c4 = new Chart(document.getElementById('volumeChart'), {
-                    type: 'line',
+                const vol5Colors = volDelta5.map(v => v === null ? 'transparent' : v >= 0 ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)');
+                const c6 = new Chart(document.getElementById('marketVolumeCumChart'), {
+                    type: 'bar',
                     data: {
-                        labels: v60.map(d => d['日期']),
+                        labels: labels60,
                         datasets: [
-                            { label: '全市场成交额(千亿)', data: volValues, borderColor: '#f59e0b', tension: 0.4, pointRadius: 2 },
-                            { label: '均值:' + avgAmt, data: Array(volValues.length).fill(avgAmt), borderColor: '#f59e0b', borderDash: [5,5], borderWidth: 1, pointRadius: 0, fill: false, skipTooltip: true }
+                            {
+                                type: 'line',
+                                label: '中位数涨跌幅',
+                                data: medLine,
+                                borderColor: '#8b5cf6', tension: 0.4, pointRadius: 2, yAxisID: 'y'
+                            },
+                            {
+                                type: 'bar',
+                                label: '成交额涨跌量(5日累计,千亿)',
+                                data: volDelta5,
+                                backgroundColor: vol5Colors,
+                                borderColor: vol5Colors,
+                                borderWidth: 0,
+                                yAxisID: 'y1'
+                            }
                         ]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
                         scales: {
-                            y: { min: yMin, max: yMax, title: { display: true, text: '成交额(千亿)' } }
+                            y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } },
+                            y1: { position: 'right', title: { display: true, text: '5日累计(千亿)' }, grid: { drawOnChartArea: false } }
                         },
                         plugins: {
                             legend: { position: 'bottom' },
                             tooltip: {
                                 mode: 'index', intersect: false,
-                                filter: (tooltipItem) => !tooltipItem.chart.data.datasets[tooltipItem.datasetIndex].skipTooltip
+                                callbacks: {
+                                    label: function(ctx) {
+                                        if (ctx.parsed.y === null) return '';
+                                        const v = ctx.parsed.y;
+                                        if (ctx.dataset.type === 'line') {
+                                            return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                                        }
+                                        return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2);
+                                    }
+                                }
                             }
                         },
                         interaction: { mode: 'index', intersect: false },
@@ -597,7 +653,7 @@
                     },
                     plugins: [crosshairPlugin]
                 });
-                allCharts.push(c4);
+                allCharts.push(c6);
                 document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
             } catch (e) {
                 console.error('Error loading data:', e);
@@ -610,9 +666,8 @@
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
             if (e.key === '1') { location.href = 'resonance.html'; }
             if (e.key === '2') { location.href = 'index.html'; }
-            if (e.key === '3') { location.href = 'track.html'; }
+            if (e.key === '3') { showToast('该功能暂未开放', 'warning'); return; }
             if (e.key === '4') { return; }
-            if (e.key === '5') { showToast('该功能暂未开放', 'warning'); return; }
         });
 
         init();
