@@ -85,14 +85,13 @@
         <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
         <div class="nav-item active">背离分析</div>
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
         <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
     </div>
     <div class="main">
         <div class="header">
-            <h1>妙可蓝多 涨跌背离 <span class="subtitle">方向背离 vs 市场中位</span></h1>
+            <h1>量价背离分析 <span class="subtitle">市场中位涨跌幅 vs 成交额涨跌量</span></h1>
             <div class="header-right">
                 <span class="date" id="updateDate">加载中...</span>
             </div>
@@ -280,134 +279,119 @@
 
         async function init() {
             try {
-                const marketData = await fetchCSV(baseUrl + '/stock_data/涨跌个数_市场.csv');
+                const [marketData, volumeData] = await Promise.all([
+                    fetchCSV(baseUrl + '/stock_data/涨跌个数_市场.csv'),
+                    fetchCSV(baseUrl + '/stock_data/全市场成交额.csv')
+                ]);
                 const dateSpan = document.getElementById('updateDate');
                 if (marketData.length > 0) {
                     dateSpan.textContent = '最新数据: ' + (marketData[marketData.length-1]['date'] || '');
                 }
-                
-                const assets = [
-                    { name: '妙可蓝多', file: '历史价格_妙可蓝多.csv', color: '#3b82f6', chgColor: '#2563eb', label: '妙可蓝多', dateKey: '日期', priceKey: '收盘' },
-                ];
-                
-                const allData = await Promise.all(assets.map(a =>
-                    fetchCSV(baseUrl + '/stock_data/' + a.file)
-                ));
-                
+
                 const nWindow = 60;
                 const mWindow = marketData.slice(-nWindow);
                 const medVals = mWindow.map(d => parseFloat(d['median_change'] || 0));
                 const labels = mWindow.map(d => d['date']);
-                
-                // Compute returns and correlation for each asset
-                const assetResults = assets.map((a, idx) => {
-                    const data = allData[idx];
-                    const dmap = {};
-                    data.forEach(d => dmap[d[a.dateKey]] = parseFloat(d[a.priceKey]));
-                    const prices = mWindow.map(d => dmap[d['date']] || null);
-                    const chgs = [];
-                    let prev = null;
-                    for (const v of prices) {
-                        if (v === null || prev === null) { chgs.push(null); prev = v; }
-                        else { chgs.push((v - prev) / prev * 100); prev = v; }
+
+                const volByDate = {};
+                volumeData.forEach(d => volByDate[d['日期']] = parseFloat(d['成交额(元)'] || 0) / 1e11);
+                const volMatched = mWindow.map(d => volByDate[d['date']] || null);
+                const volDeltas = [];
+                for (let i = 0; i < volMatched.length; i++) {
+                    if (i === 0 || volMatched[i] === null || volMatched[i-1] === null) {
+                        volDeltas.push(null);
+                    } else {
+                        volDeltas.push(volMatched[i] - volMatched[i-1]);
                     }
-                    // 120-day correlation with market median returns
-                    const mRef = marketData.slice(-nWindow);
-                    const medRef = mRef.map(d => parseFloat(d['median_change'] || 0));
-                    const pRef = allData[idx].slice(-nWindow);
-                    const dmapRef = {};
-                    pRef.forEach(d => dmapRef[d[a.dateKey]] = parseFloat(d[a.priceKey]));
-                    const pRefList = mRef.map(d => dmapRef[d['date']] || null);
-                    const rRef = [0];
-                    for (let i = 1; i < pRefList.length; i++) {
-                        if (pRefList[i] === null || pRefList[i-1] === null) rRef.push(0);
-                        else rRef.push((pRefList[i] - pRefList[i-1]) / pRefList[i-1] * 100);
-                    }
-                    const corr = calcCorrelation(rRef.slice(1), medRef.slice(1));
-                    
-                    // 方向背离统计: 只看涨跌方向，不看幅度
-                    let redCnt = 0, greenCnt = 0;
-                    let redUp = 0, redTot = 0, greenDown = 0, greenTot = 0;
-                    let redExUp = 0, redExTot = 0, redExWinSum = 0, redExLossSum = 0;
-                    let greenExDown = 0, greenExTot = 0, greenExWinSum = 0, greenExLossSum = 0;
-                    let redSum3 = 0, greenSum3 = 0;
-                    
-                    for (let i = 0; i < chgs.length; i++) {
-                        const v = chgs[i], m = medVals[i];
-                        if (v === null || m === null) continue;
-                        const dirA = Math.sign(v), dirM = Math.sign(m);
-                        // 红圈: asset跌 AND 市场中位涨 (涨跌反向 → 看多)
-                        if (dirA < 0 && dirM > 0) {
-                            redCnt++;
-                            if (i+1 < chgs.length && chgs[i+1] !== null && medVals[i+1] !== null) {
-                                redTot++;
-                                if (chgs[i+1] > 0) redUp++;
-                                const ex = chgs[i+1] - medVals[i+1];
-                                redExTot++;
-                                if (ex > 0) { redExUp++; redExWinSum += ex; }
-                                else redExLossSum += ex;
-                            }
-                            if (i+3 < chgs.length && prices[i] !== null && prices[i+3] !== null)
-                                redSum3 += (prices[i+3] - prices[i]) / prices[i] * 100;
-                        }
-                        // 绿圈: asset涨 AND 市场中位跌 (涨跌反向 → 看空)
-                        if (dirA > 0 && dirM < 0) {
-                            greenCnt++;
-                            if (i+1 < chgs.length && chgs[i+1] !== null && medVals[i+1] !== null) {
-                                greenTot++;
-                                if (chgs[i+1] < 0) greenDown++;
-                                const ex = chgs[i+1] - medVals[i+1];
-                                greenExTot++;
-                                if (ex < 0) { greenExDown++; greenExWinSum += ex; }
-                                else greenExLossSum += ex;
-                            }
-                            if (i+3 < chgs.length && prices[i] !== null && prices[i+3] !== null)
-                                greenSum3 += (prices[i+3] - prices[i]) / prices[i] * 100;
-                        }
-                    }
-                    
-                    return {
-                        ...a,
-                        chgs, prices, corr,
-                        redCnt, redUp, redTot, redExUp, redExTot, redExWinSum, redExLossSum,
-                        greenCnt, greenDown, greenTot, greenExDown, greenExTot, greenExWinSum, greenExLossSum,
-                        redSum3, greenSum3,
-                    };
+                }
+                const volDelta5 = volDeltas.map((_, i) => {
+                    const a = volMatched[i];
+                    const b = i >= 5 ? volMatched[i - 5] : null;
+                    return a !== null && b !== null ? a - b : null;
                 });
-                
-                // Sort by correlation descending
-                assetResults.sort((a, b) => b.corr - a.corr);
-                
-                // Strategy performance card (盈亏比)
-                function ratio(a) {
-                    const wins = a.redExUp, tot = a.redExTot;
-                    if (tot < 2 || wins === 0 || wins === tot) return { v: null };
-                    const avgWin = a.redExWinSum / wins;
-                    const avgLoss = a.redExLossSum / (tot - wins);
-                    if (avgLoss >= 0) return { v: null };
-                    return { v: avgWin / Math.abs(avgLoss), avgWin, avgLoss: Math.abs(avgLoss) };
+
+                function percentile(arr, p) {
+                    const sorted = arr.filter(v => v !== null).sort((a, b) => a - b);
+                    if (sorted.length === 0) return 0;
+                    const idx = Math.ceil(p / 100 * sorted.length) - 1;
+                    return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
                 }
-                function ratioGreen(a) {
-                    const wins = a.greenExDown, tot = a.greenExTot;
-                    if (tot < 2 || wins === 0 || wins === tot) return { v: null };
-                    const avgWin = a.greenExWinSum / wins;
-                    const avgLoss = a.greenExLossSum / (tot - wins);
-                    if (avgLoss <= 0) return { v: null };
-                    return { v: Math.abs(avgWin) / avgLoss, avgWin: Math.abs(avgWin), avgLoss };
+                const medP20 = percentile(medVals, 20);
+                const medP80 = percentile(medVals, 80);
+                const volP20 = percentile(volDeltas, 20);
+                const volP80 = percentile(volDeltas, 80);
+
+                let redCnt = 0, greenCnt = 0;
+                let redUp = 0, redTot = 0, greenDown = 0, greenTot = 0;
+                let redConf = 0, redConfTot = 0, greenConf = 0, greenConfTot = 0;
+                let redWinCnt = 0, redWinSum = 0, redLossCnt = 0, redLossSum = 0;
+                let greenWinCnt = 0, greenWinSum = 0, greenLossCnt = 0, greenLossSum = 0;
+                let redSum3 = 0, greenSum3 = 0;
+
+                for (let i = 0; i < medVals.length; i++) {
+                    const m = medVals[i], v = volDeltas[i];
+                    if (m === null || v === null) continue;
+
+                    if (m < medP20 && v > volP80) {
+                        redCnt++;
+                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDeltas[i+1] !== null) {
+                            redTot++;
+                            if (medVals[i+1] > 0) { redUp++; redWinCnt++; redWinSum += medVals[i+1]; }
+                            else { redLossCnt++; redLossSum += medVals[i+1]; }
+                            if (volDeltas[i+1] > 0) redConf++;
+                            redConfTot++;
+                        }
+                        if (i + 3 < medVals.length) {
+                            let ok = true, cum = 0;
+                            for (let j = 1; j <= 3; j++) {
+                                if (medVals[i+j] === null) { ok = false; break; }
+                                cum += medVals[i+j];
+                            }
+                            if (ok) redSum3 += cum;
+                        }
+                    }
+
+                    if (m > medP80 && v < volP20) {
+                        greenCnt++;
+                        if (i + 1 < medVals.length && medVals[i+1] !== null && volDeltas[i+1] !== null) {
+                            greenTot++;
+                            if (medVals[i+1] < 0) { greenDown++; greenWinCnt++; greenWinSum += medVals[i+1]; }
+                            else { greenLossCnt++; greenLossSum += medVals[i+1]; }
+                            if (volDeltas[i+1] < 0) greenConf++;
+                            greenConfTot++;
+                        }
+                        if (i + 3 < medVals.length) {
+                            let ok = true, cum = 0;
+                            for (let j = 1; j <= 3; j++) {
+                                if (medVals[i+j] === null) { ok = false; break; }
+                                cum += medVals[i+j];
+                            }
+                            if (ok) greenSum3 += cum;
+                        }
+                    }
                 }
-                
-                document.getElementById('perfContainer').innerHTML = assetResults.map(a => {
-                    const r = ratio(a), rg = ratioGreen(a);
-                    function cell(v) {
-                        if (v === null || v.v === null) return '<td class="val">-</td>';
-                        const ok = v.v >= 1;
-                        return `<td class="val ${ok ? 'good' : 'bad'}">${v.v.toFixed(2)}</td>`;
-                    }
-                    function cellPct(v) {
-                        if (v === null) return '<td class="val">-</td>';
-                        return `<td class="val ${v >= 0 ? 'bad' : 'good'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</td>`;
-                    }
-                    return `
+
+                function calcRatio(wins, losses, winSum, lossSum) {
+                    const total = wins + losses;
+                    if (total < 2 || wins === 0 || losses === 0) return null;
+                    const avgWin = winSum / wins;
+                    const avgLoss = Math.abs(lossSum / losses);
+                    return { v: avgWin / avgLoss, avgWin, avgLoss };
+                }
+                const r = calcRatio(redWinCnt, redLossCnt, redWinSum, redLossSum);
+                const rg = calcRatio(greenWinCnt, greenLossCnt, Math.abs(greenWinSum), Math.abs(greenLossSum));
+
+                function cell(v) {
+                    if (v === null) return '<td class="val">-</td>';
+                    const ok = v.v >= 1;
+                    return `<td class="val ${ok ? 'good' : 'bad'}">${v.v.toFixed(2)}</td>`;
+                }
+                function cellPct(v) {
+                    if (v === null) return '<td class="val">-</td>';
+                    return `<td class="val ${v >= 0 ? 'bad' : 'good'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</td>`;
+                }
+
+                document.getElementById('perfContainer').innerHTML = `
                     <table class="perf-table">
                         <thead style="font-size:13px;color:var(--gray);">
                             <tr><td></td><td style="font-weight:600;color:#f43f5e;">看多</td><td style="font-weight:600;color:#06b6d4;">看空</td></tr>
@@ -418,121 +402,128 @@
                             <tr><td>均亏</td>${cellPct(r !== null ? -r.avgLoss : null)}${cellPct(rg !== null ? -rg.avgLoss : null)}</tr>
                         </tbody>
                     </table>`;
-                }).join('');
 
-                // Populate signal frequency
-                const a0 = assetResults[0];
-                if (a0) {
-                    const total = a0.redCnt + a0.greenCnt;
-                    document.getElementById('freqRed').textContent = a0.redCnt;
-                    document.getElementById('freqGreen').textContent = a0.greenCnt;
-                    document.getElementById('freqRedDays').textContent = a0.redCnt > 0 ? (nWindow / a0.redCnt).toFixed(1) : '-';
-                    document.getElementById('freqGreenDays').textContent = a0.greenCnt > 0 ? (nWindow / a0.greenCnt).toFixed(1) : '-';
-                }
-                
-                // Charts and stat cards
+                document.getElementById('freqRed').textContent = redCnt;
+                document.getElementById('freqGreen').textContent = greenCnt;
+                document.getElementById('freqRedDays').textContent = redCnt > 0 ? (nWindow / redCnt).toFixed(1) : '-';
+                document.getElementById('freqGreenDays').textContent = greenCnt > 0 ? (nWindow / greenCnt).toFixed(1) : '-';
+
+                const pointR = medVals.map((m, i) => {
+                    const v = volDeltas[i];
+                    if (m === null || v === null) return 2;
+                    if (m < medP20 && v > volP80) return 7;
+                    if (m > medP80 && v < volP20) return 7;
+                    return 2;
+                });
+                const pointC = medVals.map((m, i) => {
+                    const v = volDeltas[i];
+                    if (m === null || v === null) return '#8b5cf6';
+                    if (m < medP20 && v > volP80) return '#ef4444';
+                    if (m > medP80 && v < volP20) return '#10b981';
+                    return '#8b5cf6';
+                });
+
                 const container = document.getElementById('chartsContainer');
-                container.innerHTML = assetResults.map((a, idx) => {
-                    const chartId = 'chart_' + a.name;
-                    const statId = 'stat_' + a.name;
-                    return `
-                        <div class="chart-card">
-                            <div class="chart-title">${a.label} vs 市场中位涨跌幅 <span style="color:var(--gray);font-size:13px;font-weight:400;">相关系数: ${a.corr.toFixed(2)}</span></div>
-                            <div class="chart-container"><div class="sk-overlay"></div><canvas id="${chartId}"></canvas></div>
-                            <div class="stat-grid" id="${statId}" style="margin-top:16px;margin-bottom:0;"></div>
-                        </div>
-                    `;
-                }).join('');
-                
-                // Create charts and stats
-                assetResults.forEach((a, idx) => {
-                    const chartId = 'chart_' + a.name;
-                    const statId = 'stat_' + a.name;
-                    
-                    const pointBg = a.chgs.map((v, i) => {
-                        const m = medVals[i];
-                        if (v === null || m === null) return a.color;
-                        if (v < 0 && m > 0) return '#ef4444';
-                        if (v > 0 && m < 0) return '#10b981';
-                        return a.color;
-                    });
-                    const pointR = a.chgs.map((v, i) => {
-                        const m = medVals[i];
-                        if (v === null || m === null) return 2;
-                        if ((v < 0 && m > 0) || (v > 0 && m < 0)) return 7;
-                        return 2;
-                    });
-                    
-                    const chart = new Chart(document.getElementById(chartId), {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                { label: a.label + '涨跌幅', data: a.chgs, borderColor: a.color, tension: 0.4, pointRadius: pointR, pointBackgroundColor: pointBg, pointBorderColor: pointBg, yAxisID: 'y' },
-                                { label: '中位数涨跌幅', data: medVals, borderColor: '#ef4444', tension: 0.4, pointRadius: 2, yAxisID: 'y' }
-                            ]
-                        },
-                        options: {
-                            responsive: true, maintainAspectRatio: false,
-                            scales: { y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } } },
-                            plugins: {
-                                legend: { position: 'bottom' },
-                                tooltip: {
-                                    mode: 'index', intersect: false,
-                                    callbacks: {
-                                        label: function(ctx) {
-                                            if (ctx.parsed.y === null) return '';
-                                            return ctx.dataset.label + ': ' + (ctx.parsed.y >= 0 ? '+' : '') + ctx.parsed.y.toFixed(2) + '%';
-                                        }
-                                    }
-                                }
+                container.innerHTML = `
+                    <div class="chart-card">
+                        <div class="chart-title">市场中位涨跌幅 vs 成交额涨跌量(5日累计) <span style="color:var(--gray);font-size:13px;font-weight:400;">${nWindow}日 · P20/P80百分位</span></div>
+                        <div class="chart-container"><div class="sk-overlay"></div><canvas id="divergenceCumChart"></canvas></div>
+                        <div class="stat-grid" id="divergenceStats" style="margin-top:16px;margin-bottom:0;"></div>
+                    </div>`;
+
+                const vol5Colors = volDelta5.map(v => v === null ? 'transparent' : v >= 0 ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)');
+                const chart = new Chart(document.getElementById('divergenceCumChart'), {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                type: 'line',
+                                label: '中位数涨跌幅',
+                                data: medVals,
+                                borderColor: '#8b5cf6', tension: 0.4,
+                                pointRadius: pointR, pointBackgroundColor: pointC, pointBorderColor: pointC,
+                                yAxisID: 'y'
                             },
-                            interaction: { mode: 'index', intersect: false },
-                            onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
-                            onHover: (event, elements) => {
-                                if (!isLocked) {
-                                    if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
-                                    else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            {
+                                type: 'bar',
+                                label: '成交额涨跌量(5日累计,千亿)',
+                                data: volDelta5,
+                                backgroundColor: vol5Colors,
+                                borderColor: vol5Colors,
+                                borderWidth: 0,
+                                yAxisID: 'y1'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: {
+                            y: { position: 'left', title: { display: true, text: '涨跌幅(%)' } },
+                            y1: { position: 'right', title: { display: true, text: '5日累计(千亿)' }, grid: { drawOnChartArea: false } }
+                        },
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                mode: 'index', intersect: false,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        if (ctx.parsed.y === null) return '';
+                                        const v = ctx.parsed.y;
+                                        if (ctx.dataset.type === 'line') {
+                                            return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+                                        }
+                                        return ctx.dataset.label + ': ' + (v >= 0 ? '+' : '') + v.toFixed(2);
+                                    }
                                 }
                             }
                         },
-                        plugins: [crosshairPlugin]
-                    });
-                    allCharts.push(chart);
-                    
-                    document.getElementById(statId).innerHTML = `
-                        <div class="stat-card">
-                            <div class="label"><span class="legend-box" style="background:#ef4444;"></span>红圈 (asset跌·中位涨)</div>
-                            <div class="value neutral">${a.redCnt}次</div>
-                            <div class="sub">看多信号${a.redCnt > 0 ? ' · 后3日均值: ' + (a.redSum3/a.redCnt > 0 ? '+' : '') + (a.redSum3/a.redCnt).toFixed(1) + '%' : ''}</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="label">红圈 · 绝对胜率</div>
-                            <div class="value ${a.redTot > 0 && a.redUp/a.redTot >= 0.6 ? 'positive' : 'negative'}">${a.redTot > 0 ? (a.redUp/a.redTot*100).toFixed(0) : 0}%</div>
-                            <div class="sub">${a.redUp}/${a.redTot} 次日asset涨</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="label">红圈 · 补涨胜率</div>
-                            <div class="value ${a.redExTot > 0 && a.redExUp/a.redExTot >= 0.6 ? 'positive' : 'negative'}">${a.redExTot > 0 ? (a.redExUp/a.redExTot*100).toFixed(0) : 0}%</div>
-                            <div class="sub">${a.redExUp}/${a.redExTot} 次日跑赢市场中位 · 均值${a.redExTot > 0 ? ((a.redExWinSum + a.redExLossSum > 0 ? '+' : '') + ((a.redExWinSum + a.redExLossSum)/a.redExTot).toFixed(2)) : '0.00'}%</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="label"><span class="legend-box" style="background:#10b981;"></span>绿圈 (asset涨·中位跌)</div>
-                            <div class="value neutral">${a.greenCnt}次</div>
-                            <div class="sub">看空信号${a.greenCnt > 0 ? ' · 后3日均值: ' + (a.greenSum3/a.greenCnt > 0 ? '+' : '') + (a.greenSum3/a.greenCnt).toFixed(1) + '%' : ''}</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="label">绿圈 · 绝对胜率</div>
-                            <div class="value ${a.greenTot > 0 && a.greenDown/a.greenTot >= 0.6 ? 'positive' : 'negative'}">${a.greenTot > 0 ? (a.greenDown/a.greenTot*100).toFixed(0) : 0}%</div>
-                            <div class="sub">${a.greenDown}/${a.greenTot} 次日asset跌</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="label">绿圈 · 补跌胜率</div>
-                            <div class="value ${a.greenExTot > 0 && a.greenExDown/a.greenExTot >= 0.6 ? 'positive' : 'negative'}">${a.greenExTot > 0 ? (a.greenExDown/a.greenExTot*100).toFixed(0) : 0}%</div>
-                            <div class="sub">${a.greenExDown}/${a.greenExTot} 次日跑输市场中位 · 均值${a.greenExTot > 0 ? ((a.greenExWinSum + a.greenExLossSum < 0 ? '' : '+') + ((a.greenExWinSum + a.greenExLossSum)/a.greenExTot).toFixed(2)) : '0.00'}%</div>
-                        </div>
-                    `;
+                        interaction: { mode: 'index', intersect: false },
+                        onClick: (event) => { if (event.chart) toggleCrosshair(event.chart, event); },
+                        onHover: (event, elements) => {
+                            if (!isLocked) {
+                                if (elements.length > 0 && event.chart) syncCrosshair(event.chart, elements[0].index);
+                                else { syncIndex = -1; allCharts.forEach(c => c.update('none')); }
+                            }
+                        }
+                    },
+                    plugins: [crosshairPlugin]
                 });
+                allCharts.push(chart);
+
+                document.getElementById('divergenceStats').innerHTML = `
+                    <div class="stat-card">
+                        <div class="label"><span class="legend-box" style="background:#ef4444;"></span>红圈 (价跌·量增)</div>
+                        <div class="value neutral">${redCnt}次</div>
+                        <div class="sub">看多信号${redCnt > 0 ? ' · 后3日均值: ' + (redSum3/redCnt > 0 ? '+' : '') + (redSum3/redCnt).toFixed(2) + '%' : ''}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">红圈 · 绝对胜率</div>
+                        <div class="value ${redTot > 0 && redUp/redTot >= 0.6 ? 'positive' : 'negative'}">${redTot > 0 ? (redUp/redTot*100).toFixed(0) : 0}%</div>
+                        <div class="sub">${redUp}/${redTot} 次日中位上涨</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">红圈 · 量确认率</div>
+                        <div class="value ${redConfTot > 0 && redConf/redConfTot >= 0.6 ? 'positive' : 'negative'}">${redConfTot > 0 ? (redConf/redConfTot*100).toFixed(0) : 0}%</div>
+                        <div class="sub">${redConf}/${redConfTot} 次日成交额继续放量</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label"><span class="legend-box" style="background:#10b981;"></span>绿圈 (价涨·量缩)</div>
+                        <div class="value neutral">${greenCnt}次</div>
+                        <div class="sub">看空信号${greenCnt > 0 ? ' · 后3日均值: ' + (greenSum3/greenCnt > 0 ? '+' : '') + (greenSum3/greenCnt).toFixed(2) + '%' : ''}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">绿圈 · 绝对胜率</div>
+                        <div class="value ${greenTot > 0 && greenDown/greenTot >= 0.6 ? 'positive' : 'negative'}">${greenTot > 0 ? (greenDown/greenTot*100).toFixed(0) : 0}%</div>
+                        <div class="sub">${greenDown}/${greenTot} 次日中位下跌</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="label">绿圈 · 量确认率</div>
+                        <div class="value ${greenConfTot > 0 && greenConf/greenConfTot >= 0.6 ? 'positive' : 'negative'}">${greenConfTot > 0 ? (greenConf/greenConfTot*100).toFixed(0) : 0}%</div>
+                        <div class="sub">${greenConf}/${greenConfTot} 次日成交额继续缩量</div>
+                    </div>
+                `;
+
                 document.querySelectorAll('.sk-overlay').forEach(el => el.remove());
             } catch (e) {
                 console.error('初始化失败:', e);
@@ -548,7 +539,6 @@
             if (e.key === '2') { location.href = 'index.html'; }
             if (e.key === '3') { return; }
             if (e.key === '4') { location.href = 'analysis.html'; }
-            if (e.key === '5') { showToast('该功能暂未开放', 'warning'); return; }
         });
 
         init();
