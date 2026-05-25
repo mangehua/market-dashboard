@@ -74,9 +74,8 @@
         <div class="logo">华夫饼手册</div>
         <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
         <div class="nav-item active">图谱分析</div>
-        <div class="nav-item" onclick="location.href='track.html'">背离分析</div>
+        <div class="nav-item" onclick="navigateTrack()">背离分析</div>
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">决策树</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>        <hr class="nav-divider">
         <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
     </div>
@@ -126,6 +125,20 @@
     <script>
         const baseUrl = '.';
         const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+
+        let _trackClickCount = 0;
+        let _trackClickTimer = null;
+        function navigateTrack() {
+            _trackClickCount++;
+            if (_trackClickTimer) clearTimeout(_trackClickTimer);
+            _trackClickTimer = setTimeout(() => { _trackClickCount = 0; }, 2000);
+            if (_trackClickCount >= 5) {
+                _trackClickCount = 0;
+                location.href = 'track.html';
+            } else {
+                showToast('该功能暂未开放', 'warning');
+            }
+        }
 
         function showToast(msg, type, onRetry) {
             type = type || 'error';
@@ -247,12 +260,11 @@
 
         async function init() {
             try {
-                const [market, gameData, stockData, shData, miaoData] = await Promise.all([
+                const [market, gameData, stockData, shData] = await Promise.all([
                     fetchCSV(`${baseUrl}/stock_data/涨跌个数_市场.csv`),
                     fetchCSV(`${baseUrl}/stock_data/历史价格_游戏ETF.csv`),
                     fetchCSV(`${baseUrl}/stock_data/历史价格_巨人网络.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/历史价格_上证指数.csv`),
-                    fetchCSV(`${baseUrl}/stock_data/历史价格_妙可蓝多.csv`)
+                    fetchCSV(`${baseUrl}/stock_data/历史价格_上证指数.csv`)
                 ]);
 
                 const m30 = market.slice(-30);
@@ -274,7 +286,7 @@
                 const gameRets = dailyReturns(game30);
                 const stockRets = dailyReturns(stock30);
                 const shRets = dailyReturns(shData.slice(-30));
-                const miaoRets = dailyReturns(miaoData.slice(-30));
+
                 const medVals = m30.map(d => parseFloat(d['median_change'] || 0));
 
                 // 4 charts with independent crosshair
@@ -398,8 +410,6 @@
                 const sr = stockRets.slice(1);
                 const shr = shRets.slice(1);
                 const mr = medVals.slice(1);
-                const miaoR = miaoRets.slice(1);
-
                 const pairs = [
                     ['上证 vs 游戏ETF', shr, gr],
                     ['上证 vs 巨人网络', shr, sr],
@@ -407,7 +417,6 @@
                     ['上证 vs 市场中位', shr, mr],
                     ['游戏ETF vs 市场中位', gr, mr],
                     ['巨人网络 vs 市场中位', sr, mr],
-                    ['妙可蓝多 vs 市场中位', miaoR, mr],
                 ];
 
                 document.getElementById('correlationBody').innerHTML = pairs.map(p => {
@@ -426,9 +435,8 @@
             if (e.key === 'r' || e.key === 'R') { updateData(); return; }
             if (e.key === '1') { location.href = 'resonance.html'; }
             if (e.key === '2') { return; }
-            if (e.key === '3') { location.href = 'track.html'; }
+            if (e.key === '3') { showToast('该功能暂未开放', 'warning'); return; }
             if (e.key === '4') { location.href = 'analysis.html'; }
-            if (e.key === '5') { showToast('该功能暂未开放', 'warning'); return; }
         });
 
         init();
