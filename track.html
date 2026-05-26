@@ -356,7 +356,7 @@
                         if (x !== undefined && x >= area.left && x <= area.right) {
                             ctx.strokeStyle = s.type === 'entry' ? '#22c55e' : '#ef4444';
                             ctx.beginPath();
-                            ctx.moveTo(x, area.top);
+                            ctx.moveTo(x, area.top + 22);
                             ctx.lineTo(x, area.bottom);
                             ctx.stroke();
                         }
