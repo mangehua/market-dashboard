@@ -104,7 +104,7 @@
         </div>
 
         <div class="chart-card">
-            <div class="chart-title">周期切换记录</div>
+            <div class="chart-title">周期切换记录 <span style="color:var(--gray);font-size:13px;font-weight:400;">仅显示强度信号+持续≥3天, 最近5条</span></div>
             <div id="cycleTableContainer"><div style="color:var(--gray);font-size:14px;padding:8px 0;">加载中...</div></div>
         </div>
     </div>
@@ -323,7 +323,45 @@
                             ctx.restore();
                         }
                     }
+
+                    const segLen = j - i;
+                    const isLast = j >= zones.length;
+                    if ((segLen >= 3 || isLast) && x1 !== undefined && x2 !== undefined) {
+                        const midX = (Math.max(area.left, Math.min(area.right, x1)) + Math.min(area.right, Math.max(area.left, x2))) / 2;
+                        ctx.save();
+                        ctx.font = '11px -apple-system, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'top';
+                        const zoneColors = {
+                            '弱': '#dc2626', '偏弱': '#ea580c', '弱+偏': '#ea580c',
+                            '弱偏强': '#ca8a04', '强+量': '#059669', '强': '#2563eb', '强+区': '#7c3aed'
+                        };
+                        ctx.fillStyle = zoneColors[currentZone] || '#64748b';
+                        ctx.globalAlpha = 0.85;
+                        ctx.fillText(currentZone, midX, area.top + 4);
+                        ctx.restore();
+                    }
+
                     i = j;
+                }
+
+                // Quality switch dashed lines
+                const qs = chart.qualitySwitches;
+                if (qs && qs.length) {
+                    ctx.save();
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    qs.forEach(s => {
+                        const x = xAxis.getPixelForValue(s.dataIndex);
+                        if (x !== undefined && x >= area.left && x <= area.right) {
+                            ctx.strokeStyle = s.type === 'entry' ? '#22c55e' : '#ef4444';
+                            ctx.beginPath();
+                            ctx.moveTo(x, area.top);
+                            ctx.lineTo(x, area.bottom);
+                            ctx.stroke();
+                        }
+                    });
+                    ctx.restore();
                 }
             }
         };
@@ -332,9 +370,10 @@
 
         async function init() {
             try {
-                const [sentimentData, shData] = await Promise.all([
+                const [sentimentData, shData, volData] = await Promise.all([
                     fetchCSV(baseUrl + '/stock_data/情绪指数.csv'),
-                    fetchCSV(baseUrl + '/stock_data/历史价格_上证指数.csv')
+                    fetchCSV(baseUrl + '/stock_data/历史价格_上证指数.csv'),
+                    fetchCSV(baseUrl + '/stock_data/全市场成交额.csv')
                 ]);
 
                 const dateSpan = document.getElementById('updateDate');
@@ -346,6 +385,20 @@
                 const sentiment = sentimentData.map(d => parseFloat(d.sentiment));
                 const zones = sentimentData.map(d => d.zone);
                 const signals = sentimentData.map(d => d.signal);
+
+                // Volume data: compute 5日均量线
+                const volByDate = {};
+                volData.forEach(d => volByDate[d['日期']] = parseFloat(d['成交额(元)']));
+                const rawVol = dates.map(d => volByDate[d] || null);
+                const volMA5 = rawVol.map((v, i) => {
+                    if (v === null) return null;
+                    let sum = 0, cnt = 0;
+                    for (let k = Math.max(0, i - 4); k <= i; k++) {
+                        if (rawVol[k] !== null) { sum += rawVol[k]; cnt++; }
+                    }
+                    return cnt > 0 ? sum / cnt : null;
+                });
+                const volMA60 = dates.map(d => volByDate[d] ? parseFloat(volData.find(v => v['日期'] === d)['成交额60日均值']) : null);
 
                 // Align SH data with sentiment dates
                 const shByDate = {};
@@ -437,7 +490,6 @@
                 // Cycle switch table
                 let prevZone = '';
                 const switches = [];
-                // Add initial zone as first entry
                 if (sentimentData.length > 0) {
                     switches.push({
                         date: sentimentData[0].date,
@@ -445,7 +497,7 @@
                         to: sentimentData[0].zone,
                         sentiment: parseFloat(sentimentData[0].sentiment),
                         signal: sentimentData[0].signal,
-                        isInitial: true
+                        dataIndex: 0,
                     });
                 }
                 sentimentData.forEach((row, i) => {
@@ -456,15 +508,74 @@
                             from: prevZone,
                             to: z,
                             sentiment: parseFloat(row.sentiment),
-                            signal: row.signal
+                            signal: row.signal,
+                            dataIndex: i,
                         });
                     }
                     prevZone = z;
                 });
 
-                if (switches.length > 0) {
+                // Compute duration for each entry
+                for (let i = 0; i < switches.length; i++) {
+                    const dayDiff = i + 1 < switches.length
+                        ? (new Date(switches[i + 1].date) - new Date(switches[i].date)) / (1000 * 86400)
+                        : (new Date(sentimentData[sentimentData.length - 1].date) - new Date(switches[i].date)) / (1000 * 86400);
+                    switches[i].duration = Math.round(dayDiff);
+                }
+
+                // Filter: only strong signals + duration >= 3 days, keep last 5
+                const strongSignals = ['极好', '良好', '极差', '偏差'];
+                const filteredSwitches = switches.filter(s =>
+                    s.duration >= 3 && strongSignals.includes(s.signal)
+                );
+                const last5 = filteredSwitches.slice(-5);
+
+                // Quality switch markers for chart
+                const strongZones = ['强', '强+量', '强+区'];
+                const qualitySwitches = [];
+                switches.forEach(s => {
+                    const isLatest = s === switches[switches.length - 1];
+                    const ok = (dur) => isLatest || dur >= 3;
+                    const isEntry = strongZones.includes(s.to) && ['极好', '良好'].includes(s.signal) && ok(s.duration);
+                    if (isEntry) qualitySwitches.push({ ...s, type: 'entry' });
+                });
+                // Volume top warning: 前置(前5≥3日>MA60×1.1) + 强区 + 天量天价(N=20, 价≥高点97%)
+                let volTopCooldown = 0;
+                dates.forEach((d, i) => {
+                    if (i < 20) return;
+                    if (volTopCooldown > 0) { volTopCooldown--; return; }
+                    // B: only in strong zones
+                    if (!['强', '强+量', '强+区'].includes(zones[i])) return;
+                    // D: at least 3 of last 5 days > MA60 × 1.1
+                    let countAbove = 0;
+                    for (let k = i - 5; k < i; k++) {
+                        if (rawVol[k] !== null && volMA60[k] !== null && rawVol[k] > volMA60[k] * 1.1) countAbove++;
+                    }
+                    if (countAbove < 3) return;
+                    // 天量: vol is max of last 20 days
+                    const v = rawVol[i];
+                    if (v === null) return;
+                    let maxVol = -Infinity;
+                    for (let k = i - 19; k <= i; k++) {
+                        if (rawVol[k] !== null && rawVol[k] > maxVol) maxVol = rawVol[k];
+                    }
+                    if (v < maxVol) return;
+                    // 天价: price within 97% of 20-day high
+                    const p = shPrices[i];
+                    if (p === null) return;
+                    let maxPrice = -Infinity;
+                    for (let k = i - 19; k <= i; k++) {
+                        if (shPrices[k] !== null && shPrices[k] > maxPrice) maxPrice = shPrices[k];
+                    }
+                    if (p < maxPrice * 0.97) return;
+                    qualitySwitches.push({ dataIndex: i, type: 'volumeTop', date: d });
+                    volTopCooldown = 5;
+                });
+                mcChart.qualitySwitches = qualitySwitches;
+
+                if (last5.length > 0) {
                     let tblHtml = '<table class="cycle-tbl"><thead><tr><th>日期</th><th>切换</th><th>情绪分</th><th>信号</th></tr></thead><tbody>';
-                    switches.forEach(s => {
+                    last5.forEach(s => {
                         const arrow = '<span class="arrow">→</span>';
                         const fromTag = '<span class="tag" style="background:' + zoneBgColor(s.from) + ';color:var(--dark);border:1px solid #e2e8f0;">' + s.from + '</span>';
                         const toTag = '<span class="tag" style="background:' + zoneBgColor(s.to) + ';color:var(--dark);border:1px solid #e2e8f0;">' + s.to + '</span>';
