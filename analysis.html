@@ -573,6 +573,7 @@
                 volume.forEach(d => volByDate[d['日期']] = parseFloat(d['成交额(元)'] || 0) / 1e11);
                 const volMatched60 = m60.map(d => volByDate[d['date']] || null);
                 const medLine = m60.map(d => parseFloat(d['median_change'] || 0));
+                const medMean60 = medLine.reduce((a, b) => a + b, 0) / medLine.length;
                 const labels60 = m60.map(d => d['date']);
 
                 const c6 = new Chart(document.getElementById('marketVolumeCumChart'), {
@@ -584,6 +585,17 @@
                                 label: '中位数涨跌幅',
                                 data: medLine,
                                 borderColor: '#8b5cf6', tension: 0.4, pointRadius: 2, yAxisID: 'y'
+                            },
+                            {
+                                label: '60日均值',
+                                data: Array(labels60.length).fill(medMean60),
+                                borderColor: '#ef4444',
+                                borderDash: [5, 5],
+                                borderWidth: 1.5,
+                                pointRadius: 0,
+                                fill: false,
+                                tension: 0,
+                                yAxisID: 'y'
                             }
                         ]
                     },
@@ -631,19 +643,20 @@
                 });
                 const volMA60matched = m60.map(d => volByDate[d['date'] + '_ma'] || null);
 
-                const volColors = volAvgMatched.map((v, i) => v === null ? 'transparent' : v >= volMA60matched[i] ? 'rgba(16,185,129,0.6)' : 'rgba(239,68,68,0.6)');
                 const c7 = new Chart(document.getElementById('volumeChart'), {
-                    type: 'bar',
+                    type: 'line',
                     data: {
                         labels: labels60,
                         datasets: [
                             {
-                                type: 'bar',
                                 label: '成交额(千亿)',
                                 data: volAvgMatched,
-                                backgroundColor: volColors,
-                                borderColor: volColors,
-                                borderWidth: 0,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16,185,129,0.06)',
+                                borderWidth: 2,
+                                tension: 0.3,
+                                fill: true,
+                                pointRadius: 0,
                                 yAxisID: 'y',
                                 order: 2
                             },
