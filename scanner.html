@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫描结果</title>
+    <link rel="icon" href="logo.png">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --primary-light: #3b82f6; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --dark: #1e293b; --gray: #64748b; --light: #f8fafc; --white: #ffffff; --border: #e2e8f0; --shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f4f8; color: var(--dark); display: flex; min-height: 100vh; }
+        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; flex-shrink: 0; }
+        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; }
+        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
+        .nav-divider { border:none; border-top:1px solid var(--border); margin:8px 16px; }
+        .main { flex: 1; padding: 24px; max-width: 1200px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header h1 { font-size: 24px; font-weight: 600; }
+        .header .date { color: var(--gray); font-size: 13px; }
+        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
+        .toast { padding:12px 20px; border-radius:8px; color:#fff; font-size:14px; margin-bottom:8px; animation:toastIn .3s ease; max-width:400px; }
+        .toast.error { background:#ef4444; }
+        .toast.success { background:#10b981; }
+        .toast.warning { background:#f59e0b; }
+        @keyframes toastIn { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
+
+        .panel { margin-bottom: 32px; background: var(--white); border-radius: 8px; box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
+        .panel-header { padding: 16px 20px 0; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+        .panel-title { font-size: 16px; font-weight: 600; color: var(--dark); }
+        .panel-title .badge { font-size: 12px; font-weight: 400; color: var(--gray); background: #e2e8f0; padding: 2px 8px; border-radius: 4px; margin-left: 8px; }
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .controls label { font-size: 12px; color: var(--gray); }
+        .controls select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: var(--white); color: var(--dark); cursor: pointer; }
+        .controls select:focus { outline: none; border-color: var(--primary); }
+        .chart-container { width: 100%; height: 420px; margin-top: 12px; }
+        .detail-card { padding: 12px 20px 16px; border-top: 1px solid var(--border); min-height: 60px; }
+        .detail-card .empty { color: var(--gray); font-size: 13px; text-align: center; padding: 8px 0; }
+        .detail-card .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px 16px; }
+        .detail-card .item { font-size: 13px; display: flex; justify-content: space-between; padding: 2px 0; }
+        .detail-card .item .label { color: var(--gray); }
+        .detail-card .item .value { font-weight: 500; color: var(--dark); }
+        .detail-card .item .value.high { color: var(--success); }
+        .detail-card .item .value.mid { color: var(--dark); }
+        .detail-card .item .value.low { color: var(--danger); }
+        .detail-card .header-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+        .detail-card .header-row .code { font-size: 14px; font-weight: 600; color: var(--primary); }
+        .detail-card .header-row .name { font-size: 14px; font-weight: 500; }
+        .detail-card .header-row .industry { font-size: 12px; color: var(--gray); background: #e2e8f0; padding: 2px 8px; border-radius: 4px; }
+        .legend-info { font-size: 12px; color: var(--gray); padding: 4px 20px 0; }
+        .stats-bar { display: flex; gap: 16px; padding: 8px 20px 0; font-size: 13px; color: var(--gray); }
+        .stats-bar strong { color: var(--dark); }
+        .controls .legend-invert { padding:4px 10px; border:1px solid var(--border); border-radius:4px; font-size:12px; background:var(--white); color:var(--gray); cursor:pointer; user-select:none; }
+        .controls .legend-invert:hover { border-color:var(--primary); color:var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">华夫饼手册</div>
+        <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
+        <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
+        <div class="nav-item" onclick="location.href='track.html'">周期研判</div>
+        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
+        <div class="nav-item active" onclick="location.href='scanner.html'">扫描结果</div>
+        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
+        <hr class="nav-divider">
+        <div class="nav-item" onclick="updateData()">数据更新</div>
+    </div>
+    <div class="main">
+        <div class="header">
+            <h1>扫描结果</h1>
+            <span class="date" id="updateDate">加载中...</span>
+        </div>
+
+        <div class="panel" id="resonancePanel">
+            <div class="panel-header">
+                <div>
+                    <span class="panel-title">普跌共振反弹 <span class="badge">超额收益 vs 共振放量比</span></span>
+                    <div class="stats-bar" id="resStats"></div>
+                </div>
+                <div class="controls">
+                    <label>X</label>
+                    <select id="resX"></select>
+                    <label>Y</label>
+                    <select id="resY"></select>
+                    <span class="legend-invert" onclick="invertLegend('resChart')">反选</span>
+                </div>
+            </div>
+            <div id="resChart" class="chart-container"></div>
+            <div class="detail-card" id="resDetail"><div class="empty">点击图表中的点查看详情</div></div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        function showToast(msg, type) {
+            type = type || 'error';
+            var c = document.getElementById('toastContainer');
+            if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
+            var t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg; c.appendChild(t);
+            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 4000);
+        }
+
+        function escape(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        function invertLegend(chartId) {
+            var dom = document.getElementById(chartId);
+            var chart = echarts.getInstanceByDom(dom);
+            if (!chart) return;
+            var option = chart.getOption();
+            if (!option || !option.series) return;
+            var seen = {};
+            option.series.forEach(function(s) {
+                if (s.name && !seen[s.name]) {
+                    seen[s.name] = true;
+                    chart.dispatchAction({type: 'legendToggleSelect', name: s.name});
+                }
+            });
+        }
+
+        async function fetchCSV(url) {
+            var r = await fetch(url);
+            var t = await r.text();
+            var lines = t.trim().split('\n');
+            var headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^\uFEFF/, ''); });
+            return lines.slice(1).map(function(line) {
+                var vals = line.split(',');
+                var obj = {};
+                headers.forEach(function(h, i) { obj[h] = vals[i] ? vals[i].trim() : ''; });
+                return obj;
+            });
+        }
+
+        async function fetchNames() {
+            var CACHE_KEY = 'stock_lookup_v1';
+            try {
+                var cache = await caches.open('scanner-cache');
+                var cached = await cache.match(CACHE_KEY);
+                if (cached) return await cached.json();
+            } catch(e) {}
+            var r = await fetch('stock_data/stock_lookup.json');
+            var lookup = await r.json();
+            try {
+                var cache = await caches.open('scanner-cache');
+                cache.put(CACHE_KEY, new Response(JSON.stringify(lookup)));
+            } catch(e) {}
+            return lookup;
+        }
+
+        var INDUSTRY_COLORS = [
+            '#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de',
+            '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc', '#67e0e3',
+            '#ff9f7f', '#b681d6', '#d4a0a0'
+        ];
+
+        var INDUSTRY_PALETTE = {};
+
+        function getIndustryColor(ind) {
+            if (!ind || ind === '—') return '#94a3b8';
+            if (!INDUSTRY_PALETTE[ind]) {
+                var keys = Object.keys(INDUSTRY_PALETTE);
+                INDUSTRY_PALETTE[ind] = INDUSTRY_COLORS[keys.length % INDUSTRY_COLORS.length];
+            }
+            return INDUSTRY_PALETTE[ind];
+        }
+
+        var RES_COLUMNS = [
+            { key: '共振次数', label: '共振次数' },
+            { key: '共振平均放量比', label: '共振放量比' },
+            { key: '反弹平均放量比', label: '反弹放量比' }
+        ];
+
+        var RES_Y_COLUMNS = [
+            { key: '反弹率%', label: '反弹率' },
+            { key: '平均超额收益%', label: '超额收益' }
+        ];
+
+        function num(v) { var n = parseFloat(v); return isNaN(n) ? null : n; }
+
+        function buildScatter(rows, names, xKey, yKey, chartDom, detailDom, columns) {
+            var chart = echarts.getInstanceByDom(chartDom);
+            if (!chart) chart = echarts.init(chartDom);
+
+            var xLabel = '';
+            var yLabel = '';
+            columns.forEach(function(c) {
+                if (c.key === xKey) xLabel = c.label;
+                if (c.key === yKey) yLabel = c.label;
+            });
+
+            var groups = {};
+            rows.forEach(function(row) {
+                var code = row['股票代码'];
+                var n = names[code];
+                var ind = n && n.industry ? n.industry : '—';
+                if (!groups[ind]) groups[ind] = [];
+                var xv = num(row[xKey]);
+                var yv = num(row[yKey]);
+                if (xv !== null && yv !== null) {
+                    groups[ind].push({ code: code, name: n && n.name ? n.name : code, row: row, x: xv, y: yv });
+                }
+            });
+
+            var series = [];
+            var legendData = [];
+            Object.keys(groups).sort().forEach(function(ind) {
+                var pts = groups[ind];
+                pts.sort(function(a, b) { return b.y - a.y; });
+                series.push({
+                    name: ind,
+                    type: 'scatter',
+                    data: pts.map(function(p) { return [p.x, p.y, p.code, p.name, ind]; }),
+                    symbolSize: 10,
+                    itemStyle: { color: getIndustryColor(ind) }
+                });
+                legendData.push(ind);
+            });
+
+            var option = {
+                tooltip: {
+                    trigger: 'item',
+                    formatter: function(params) {
+                        var d = params.data;
+                        if (!d) return '';
+                        return '<strong>' + escape(d[3]) + ' (' + d[2] + ')</strong><br/>' +
+                            '行业: ' + escape(d[4]) + '<br/>' +
+                            xLabel + ': ' + d[0] + '<br/>' +
+                            yLabel + ': ' + d[1];
+                    }
+                },
+                legend: {
+                    type: 'scroll',
+                    bottom: 0,
+                    selectedMode: 'multiple',
+                    textStyle: { fontSize: 11 },
+                    pageIconSize: 10
+                },
+                grid: { left: 60, right: 20, top: 20, bottom: 80 },
+                xAxis: {
+                    name: xLabel,
+                    nameLocation: 'center',
+                    nameGap: 30,
+                    nameTextStyle: { fontSize: 12, fontWeight: 500 },
+                    type: 'value',
+                    scale: true,
+                    splitLine: { lineStyle: { type: 'dashed', color: '#e2e8f0' } }
+                },
+                yAxis: {
+                    name: yLabel,
+                    nameLocation: 'center',
+                    nameGap: 40,
+                    nameTextStyle: { fontSize: 12, fontWeight: 500 },
+                    type: 'value',
+                    scale: true,
+                    splitLine: { lineStyle: { type: 'dashed', color: '#e2e8f0' } }
+                },
+                series: series
+            };
+
+            chart.setOption(option, true);
+
+            chart.off('click');
+            chart.on('click', function(params) {
+                var d = params.data;
+                if (!d) { detailDom.innerHTML = '<div class="empty">点击图表中的点查看详情</div>'; return; }
+                var row = null;
+                var code = d[2];
+                for (var i = 0; i < rows.length; i++) {
+                    if (rows[i]['股票代码'] === code) { row = rows[i]; break; }
+                }
+                if (!row) { detailDom.innerHTML = '<div class="empty">未找到数据</div>'; return; }
+                var n = names[code];
+                var realName = n && n.name ? n.name : code;
+                var ind = n && n.industry ? n.industry : '—';
+                var html = '<div class="header-row">';
+                html += '<span class="code">' + escape(code) + '</span>';
+                html += '<span class="name">' + escape(realName) + '</span>';
+                html += '<span class="industry">' + escape(ind) + '</span>';
+                html += '</div><div class="grid">';
+                columns.forEach(function(col) {
+                    var v = row[col.key] || '-';
+                    var cls = '';
+                    if (col.key.indexOf('概率%') >= 0 || col.key.indexOf('反弹率%') >= 0) {
+                        var pn = num(v);
+                        if (pn !== null) cls = pn >= 80 ? 'high' : (pn >= 50 ? 'mid' : 'low');
+                    }
+                    html += '<div class="item"><span class="label">' + col.label + '</span><span class="value' + (cls ? ' ' + cls : '') + '">' + escape(v) + '</span></div>';
+                });
+                html += '</div>';
+                detailDom.innerHTML = html;
+            });
+        }
+
+        function populateSelect(sel, columns, defaultKey) {
+            sel.innerHTML = '';
+            columns.forEach(function(col) {
+                var opt = document.createElement('option');
+                opt.value = col.key;
+                opt.textContent = col.label;
+                if (col.key === defaultKey) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        function initPanel(rows, names, xColumns, yColumns, defaultX, defaultY, chartId, detailId, xSelectId, ySelectId, statsId) {
+            var chartDom = document.getElementById(chartId);
+            var detailDom = document.getElementById(detailId);
+            var xSel = document.getElementById(xSelectId);
+            var ySel = document.getElementById(ySelectId);
+
+            populateSelect(xSel, xColumns, defaultX);
+            populateSelect(ySel, yColumns, defaultY);
+
+            document.getElementById(statsId).innerHTML = '共 <strong>' + rows.length + '</strong> 只股票';
+
+            function render() {
+                var xk = xSel.value;
+                var yk = ySel.value;
+                buildScatter(rows, names, xk, yk, chartDom, detailDom, xColumns);
+            }
+
+            xSel.addEventListener('change', render);
+            ySel.addEventListener('change', render);
+
+            render();
+
+            window.addEventListener('resize', function() {
+                var c = echarts.getInstanceByDom(chartDom);
+                if (c) c.resize();
+            });
+        }
+
+        async function loadData() {
+            try {
+                var resRows = await fetchCSV('stock_data/普跌共振反弹_主板.csv');
+
+                var names = await fetchNames();
+
+                initPanel(resRows, names, RES_COLUMNS, RES_Y_COLUMNS, '共振平均放量比', '平均超额收益%', 'resChart', 'resDetail', 'resX', 'resY', 'resStats');
+
+                document.getElementById('updateDate').textContent = new Date().toLocaleString('zh-CN');
+            } catch (e) {
+                showToast('加载数据失败: ' + e.message, 'error');
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'r' || e.key === 'R') { updateData(); return; }
+            if (e.key === '1') { location.href = 'resonance.html'; }
+            if (e.key === '2') { location.href = 'index.html'; }
+            if (e.key === '3') { location.href = 'track.html'; return; }
+            if (e.key === '4') { location.href = 'analysis.html'; }
+            if (e.key === '5') { location.href = 'scanner.html'; return; }
+        });
+
+        function updateData() { location.reload(); }
+
+        loadData();
+    </script>
+</body>
+</html>
