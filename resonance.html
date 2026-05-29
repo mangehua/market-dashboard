@@ -84,7 +84,8 @@
         <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
         <div class="nav-item" onclick="location.href='scanner.html'">扫描结果</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>        <hr class="nav-divider">
-        <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
+        <div class="nav-item" id="updateNavBtn" onclick="updateData()">盘后数据</div>
+        <div class="nav-item" id="rtNav" onclick="realtimeUpdate()">盘中数据</div>
     </div>
     <div class="main">
         <div class="header">
@@ -191,18 +192,13 @@
             const dateSpan = document.getElementById('updateDate');
             const pb = document.getElementById('progressBar');
             if (!nav) return;
-            if (IS_REMOTE) {
-                await remoteUpdateData();
-                return;
-            }
+            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             nav.classList.add('disabled');
-            nav.textContent = '⏳ 更新中...';
             if (pb) pb.classList.add('active');
             try {
                 const res = await fetch('/api/update/all', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ok') {
-                    nav.textContent = '数据更新';
                     showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
                     nav.classList.remove('disabled');
                     if (pb) pb.classList.remove('active');
@@ -215,13 +211,11 @@
                     if (ps.status === 'done') {
                         clearInterval(poll);
                         if (pb) pb.classList.remove('active');
-                        nav.textContent = '✅ 更新完成';
                         if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
                         showToast('数据更新完成', 'success');
                         setTimeout(() => { location.reload(); }, 2000);
                     } else if (ps.status === 'error') {
                         clearInterval(poll);
-                        nav.textContent = '数据更新';
                         showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
                         nav.classList.remove('disabled');
                         if (pb) pb.classList.remove('active');
@@ -230,11 +224,10 @@
             } catch (e) {
                 showToast('请求失败: ' + e.message, 'error');
                 nav.classList.remove('disabled');
-                nav.textContent = '数据更新';
                 if (pb) pb.classList.remove('active');
             }
         }
-        
+
         async function uploadCsv() {
             if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             const btn = document.getElementById('uploadCsvBtn');
@@ -359,9 +352,12 @@
         function drawMiniCandles(id, candles, support, resistance) {
             const canvas = document.getElementById(id);
             const ctx = canvas.getContext('2d');
-            const w = canvas.width, ch = canvas.height;
             const dpr = window.devicePixelRatio || 1;
-            if (dpr > 1) { canvas.width = w * dpr; canvas.height = ch * dpr; ctx.scale(dpr, dpr); }
+            const w = canvas.clientWidth || canvas.width;
+            const ch = canvas.clientHeight || canvas.height;
+            canvas.width = w * dpr;
+            canvas.height = ch * dpr;
+            ctx.scale(dpr, dpr);
             ctx.clearRect(0, 0, w, ch);
             ctx.lineWidth = 2;
 
@@ -398,6 +394,7 @@
             ctx.fillText(resistance.toFixed(1), 4, toY(resistance) - 4);
 
             const n = candles.length;
+            const barWidth = Math.min(60, drawW / n * 0.2);
             for (let i = 0; i < n; i++) {
                 const {o, h, l, c} = candles[i];
                 const cx = pad + drawW * (i * 2 + 1) / (n * 2);
@@ -408,8 +405,8 @@
                 ctx.beginPath(); ctx.moveTo(cx, toY(h)); ctx.lineTo(cx, toY(l)); ctx.stroke();
                 const bt = toY(Math.max(o, c));
                 const bb = toY(Math.min(o, c));
-                ctx.fillRect(cx - 6, bt, 12, Math.max(bb - bt, 1));
-                ctx.fillText(c.toFixed(1), cx + 14, toY(c) + 5);
+                ctx.fillRect(cx - barWidth / 2, bt, barWidth, Math.max(bb - bt, 1));
+                ctx.fillText(c.toFixed(1), cx + barWidth / 2 + 6, toY(c) + 5);
             }
         }
 
@@ -568,55 +565,25 @@
             try {
                 const data = await fetchData(baseUrl);
                 renderUI(data);
+                if (location.search.indexOf('realtime=1') >= 0) {
+                    setTimeout(function() { remoteUpdateData(data); }, 500);
+                }
             } catch (error) {
                 console.error('加载失败:', error);
                 showToast('加载数据失败', 'error', function() { location.reload(); });
             }
         }
 
-        async function remoteUpdateData() {
-            const now = new Date();
-            const h = (now.getUTCHours() + 8) % 24;
-            const m = now.getUTCMinutes();
-            const curr = h + m / 60;
-
-            const isAfternoon = curr >= 11.5 && curr < 13;
-            const isTail = curr >= 14 + 50/60 && curr < 15.5;
-            const today = now.toDateString();
-
-            let quota = JSON.parse(localStorage.getItem('remote_quota') || '{}');
-            if (quota.date !== today) quota = { date: today, afternoon: 0, tail: 0 };
-
-            if (!isAfternoon && !isTail) {
-                showToast('更新时段：午盘 11:30-13:00（余' + (3 - quota.afternoon) + '次）| 尾盘 14:50-15:30（余' + (3 - quota.tail) + '次）', 'warning');
-                return;
-            }
-
-            const slot = isAfternoon ? 'afternoon' : 'tail';
-            const slotName = isAfternoon ? '午盘' : '尾盘';
-            const otherSlot = isAfternoon ? 'tail' : 'afternoon';
-            const otherName = isAfternoon ? '尾盘' : '午盘';
-
-            if (quota[slot] >= 3) {
-                if (quota[otherSlot] < 3) {
-                    showToast('今日' + slotName + '已用完，' + otherName + '(14:50-15:30)余' + (3 - quota[otherSlot]) + '次', 'warning');
-                } else {
-                    showToast('今日午盘和尾盘均已用完，明日重置', 'warning');
-                }
-                return;
-            }
-
+        async function remoteUpdateData(existingData) {
             const nav = document.getElementById('updateNavBtn');
             const dateSpan = document.getElementById('updateDate');
             const pb = document.getElementById('progressBar');
             nav.classList.add('disabled');
-            nav.textContent = '远程更新中...';
-            if (pb) pb.classList.add('active');
 
+            if (pb) pb.classList.add('active');
             try {
                 const GITHUB_RAW = 'https://raw.githubusercontent.com/mangehua/market-dashboard/main';
-                const data = await fetchData(GITHUB_RAW);
-
+                const data = existingData || await fetchData(GITHUB_RAW);
                 const symbols = ['sh000001', 'sh516770', 'sz002558'];
                 const names = ['etfHistory', 'gameData', 'stockData'];
                 let hasTencentData = false;
@@ -648,33 +615,45 @@
                         hasTencentData = true;
                     } catch (e) {}
                 }
-
                 renderUI(data);
 
-                quota[slot]++;
-                localStorage.setItem('remote_quota', JSON.stringify(quota));
-
-                const remaining = 3 - quota[slot];
-                nav.textContent = slotName + '余' + remaining + '次';
                 if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
-
                 if (hasTencentData) {
-                    showToast(slotName + '更新完成，盘中更新配额余' + remaining + '次', 'success');
+                    showToast('数据更新完成', 'success');
                 } else {
-                    showToast(slotName + '更新完成，今日盘中数据暂未生成', 'success');
+                    showToast('更新完成，今日盘中数据暂未生成', 'success');
                 }
 
-                setTimeout(function() {
-                    if (nav.textContent.indexOf('余') > -1) nav.textContent = '数据更新';
-                }, 5000);
-
             } catch (e) {
-                showToast('数据拉取失败，请检查网络后重试', 'error', function() { remoteUpdateData(); });
-                nav.textContent = '数据更新';
+                    showToast('数据拉取失败，请检查网络后重试', 'error', function() { remoteUpdateData(); });
             }
-
             nav.classList.remove('disabled');
             if (pb) pb.classList.remove('active');
+        }
+
+        function realtimeUpdate() {
+            var nav = document.getElementById('rtNav');
+            if (nav.classList.contains('disabled')) return;
+            var today = new Date().toDateString();
+            var savedDate = localStorage.getItem('realtime_quota_date') || '';
+            if (savedDate !== today) {
+                localStorage.setItem('realtime_quota_date', today);
+                localStorage.setItem('realtime_quota_20', '0');
+            }
+            var quota = JSON.parse(localStorage.getItem('realtime_quota_20') || '0');
+            if (quota >= 20) {
+                showToast('今日盘中更新(20次)已用完，明日重置', 'warning');
+                return;
+            }
+            quota++;
+            localStorage.setItem('realtime_quota_20', JSON.stringify(quota));
+            showToast('盘中更新配额余' + (20 - quota) + '次', 'success');
+            nav.textContent = '⏳ 更新中...';
+            nav.classList.add('disabled');
+            remoteUpdateData().then(function() {
+                nav.textContent = '盘中数据';
+                nav.classList.remove('disabled');
+            });
         }
 
         document.addEventListener('keydown', function(e) {
