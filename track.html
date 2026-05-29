@@ -88,7 +88,8 @@
         <div class="nav-item" onclick="location.href='scanner.html'">扫描结果</div>
         <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
         <hr class="nav-divider">
-        <div class="nav-item" id="updateNavBtn" onclick="updateData()">数据更新</div>
+        <div class="nav-item" id="updateNavBtn" onclick="updateData()">盘后数据</div>
+        <div class="nav-item" id="rtNav" onclick="realtimeUpdate()">盘中数据</div>
     </div>
     <div class="main">
         <div class="header">
@@ -153,13 +154,11 @@
             if (!nav) return;
             if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             nav.classList.add('disabled');
-            nav.textContent = '⏳ 更新中...';
             if (pb) pb.classList.add('active');
             try {
                 const res = await fetch('/api/update/all', { method: 'POST' });
                 const data = await res.json();
                 if (data.status !== 'ok') {
-                    nav.textContent = '数据更新';
                     showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
                     nav.classList.remove('disabled');
                     if (pb) pb.classList.remove('active');
@@ -172,13 +171,11 @@
                     if (ps.status === 'done') {
                         clearInterval(poll);
                         if (pb) pb.classList.remove('active');
-                        nav.textContent = '✅ 更新完成';
                         if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
                         showToast('数据更新完成', 'success');
                         setTimeout(() => { location.reload(); }, 2000);
                     } else if (ps.status === 'error') {
                         clearInterval(poll);
-                        nav.textContent = '数据更新';
                         showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
                         nav.classList.remove('disabled');
                         if (pb) pb.classList.remove('active');
@@ -187,7 +184,6 @@
             } catch (e) {
                 showToast('请求失败: ' + e.message, 'error', function() { updateData(); });
                 nav.classList.remove('disabled');
-                nav.textContent = '数据更新';
                 if (pb) pb.classList.remove('active');
             }
         }
@@ -606,6 +602,28 @@
             if (e.key === '4') { location.href = 'analysis.html'; }
             if (e.key === '5') { location.href = 'scanner.html'; }
         });
+
+        function realtimeUpdate() {
+            var nav = document.getElementById('rtNav');
+            if (nav.classList.contains('disabled')) return;
+            var today = new Date().toDateString();
+            var savedDate = localStorage.getItem('realtime_quota_date') || '';
+            if (savedDate !== today) {
+                localStorage.setItem('realtime_quota_date', today);
+                localStorage.setItem('realtime_quota_20', '0');
+            }
+            var quota = JSON.parse(localStorage.getItem('realtime_quota_20') || '0');
+            if (quota >= 20) {
+                showToast('今日盘中更新(20次)已用完，明日重置', 'warning');
+                return;
+            }
+            quota++;
+            localStorage.setItem('realtime_quota_20', JSON.stringify(quota));
+            showToast('盘中更新配额余' + (20 - quota) + '次', 'success');
+            nav.textContent = '⏳ 跳转中...';
+            nav.classList.add('disabled');
+            setTimeout(function() { location.href = 'resonance.html?realtime=1'; }, 1500);
+        }
 
         init();
     </script>
