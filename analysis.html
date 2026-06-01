@@ -145,7 +145,7 @@
         </div>
 
         <div class="chart-card">
-            <div class="chart-title">全市场成交额 <span style="color:var(--gray);font-size:13px;font-weight:400;">柱: 日成交额 / 线: 60日均值(强弱分界)</span></div>
+            <div class="chart-title">全市场成交额 <span style="color:var(--gray);font-size:13px;font-weight:400;">柱: 日成交额 / 线: 10日均值</span></div>
             <div class="chart-container"><div class="sk-overlay"></div><canvas id="volumeChart"></canvas></div>
         </div>
     </div>
@@ -633,13 +633,13 @@
                     const v = volByDate[d['date']];
                     return v !== null ? v : null;
                 });
-                const volMA60 = [];
+                const volMA10 = [];
                 volume.forEach(d => {
                     const dt = d['日期'];
-                    const m60val = parseFloat(d['成交额60日均值'] || 0) / 1e11;
-                    volByDate[dt + '_ma'] = m60val;
+                    const m10val = parseFloat(d['成交额10日均值'] || 0) / 1e11;
+                    volByDate[dt + '_ma'] = m10val;
                 });
-                const volMA60matched = m60.map(d => volByDate[d['date'] + '_ma'] || null);
+                const volMA10matched = m60.map(d => volByDate[d['date'] + '_ma'] || null);
 
                 const c7 = new Chart(document.getElementById('volumeChart'), {
                     type: 'line',
@@ -660,8 +660,8 @@
                             },
                             {
                                 type: 'line',
-                                label: '60日均值(强弱分界)',
-                                data: volMA60matched,
+                                label: '10日均值',
+                                data: volMA10matched,
                                 borderColor: '#f59e0b',
                                 borderWidth: 2,
                                 borderDash: [6, 3],
@@ -684,7 +684,7 @@
                                     label: function(ctx) {
                                         if (ctx.parsed.y === null) return '';
                                         const v = ctx.parsed.y;
-                                        if (ctx.dataset.label === '60日均值(强弱分界)') {
+                                        if (ctx.dataset.label === '10日均值') {
                                             return ctx.dataset.label + ': ' + v.toFixed(2) + ' 千亿';
                                         }
                                         return ctx.dataset.label + ': ' + v.toFixed(2) + ' 千亿';
