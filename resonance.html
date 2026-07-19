@@ -5,46 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>共振分析</title>
     <link rel="icon" href="logo.png">
+    <link rel="stylesheet" href="assets/common.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="assets/common.js"></script>
     <style>
-        :root {
-            --primary: #2563eb;
-            --primary-light: #3b82f6;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-            --dark: #1e293b;
-            --gray: #64748b;
-            --light: #f8fafc;
-            --white: #ffffff;
-            --border: #e2e8f0;
-            --shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: var(--light);
-            color: var(--dark);
-            display: flex;
-            min-height: 100vh;
-            overscroll-behavior-y: contain;
-        }
-        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; }
-        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; transition: all 0.2s; }
-        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
-        .nav-item.disabled { opacity:0.4; pointer-events:none; cursor:default; }
-        .nav-divider { border:none; border-top:1px solid var(--border); margin:8px 16px; }
-        .main { flex: 1; padding: 24px; overflow-x: auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .header h1 { font-size: 24px; font-weight: 600; }
-        .header-right { display: flex; align-items: center; gap: 12px; }
-        .header .date { color: var(--gray); font-size: 13px; font-weight: 400; }
-        .update-btn { padding: 8px 16px; background: var(--primary); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; transition: background 0.2s; }
-        .update-btn:hover { background: var(--primary-light); }
-        .update-btn:disabled { background: var(--gray); cursor: not-allowed; }
-        .update-btn.btn-csv { background: var(--success); }
-        .update-btn.btn-html { background: var(--primary); }
         .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
         .stat-card { perspective: 600px; cursor: pointer; animation: cardFadeIn 0.4s ease both; }
         .stat-card-inner { display: grid; grid-template: 1fr / 1fr; transition: transform 0.5s; transform-style: preserve-3d; border-radius: 12px; }
@@ -58,36 +22,12 @@
         .stat-change { font-size: 13px; }
         .stat-change.positive { color: var(--success); }
         .stat-change.negative { color: var(--danger); }
-        .chart-card { background: var(--white); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 24px; animation: cardFadeIn 0.4s ease both; }
-        .chart-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
-        .chart-container { height: 350px; position:relative; }
-        .sk-overlay { position:absolute; inset:0; background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%); background-size:200% 100%; animation:sk-shimmer 1.5s ease-in-out infinite; border-radius:12px; z-index:1; }
-        @keyframes sk-shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        .progress-bar { position:fixed; top:0; left:0; right:0; z-index:9999; height:3px; background:var(--border); overflow:hidden; display:none; }
-        .progress-bar.active { display:block; }
-        .progress-bar-inner { height:100%; width:40%; background:linear-gradient(90deg,var(--primary),#818cf8); border-radius:2px; animation:pb-indeterminate 1.5s ease-in-out infinite; }
-        @keyframes pb-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
-        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
-        .toast { padding:12px 20px; border-radius:8px; color:#fff; font-size:14px; margin-bottom:8px; box-shadow:0 4px 12px rgba(0,0,0,0.15); animation:toastIn .3s ease; max-width:400px; }
-        .toast.error { background:#ef4444; }
-        .toast.success { background:#10b981; }
-        .toast.warning { background:#f59e0b; }
-        @keyframes toastIn { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes cardFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .update-btn.btn-csv { background: var(--success); }
+        .update-btn.btn-html { background: var(--primary); }
     </style>
 </head>
-<body>
-    <div class="sidebar">
-        <div class="logo">华夫饼手册</div>
-        <div class="nav-item active">共振分析</div>
-        <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
-        <div class="nav-item" onclick="location.href='track.html'">周期研判</div>
-        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
-        <div class="nav-item" onclick="location.href='scanner.html'">扫描结果</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>        <hr class="nav-divider">
-        <div class="nav-item" id="updateNavBtn" onclick="updateData()">盘后数据</div>
-        <div class="nav-item" id="rtNav" onclick="realtimeUpdate()">盘中数据</div>
-    </div>
+<body data-page="resonance">
+    <div class="sidebar" id="appSidebar"></div>
     <div class="main">
         <div class="header">
             <h1>共振分析</h1>
@@ -136,12 +76,12 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="chart-card">
             <div class="chart-title">上证指数价格走势</div>
             <div class="chart-container"><div class="sk-overlay"></div><canvas id="assetChart"></canvas></div>
         </div>
-        
+
         <div class="chart-card">
             <div class="chart-title">游戏ETF价格走势</div>
             <div class="chart-container"><div class="sk-overlay"></div><canvas id="gameChart"></canvas></div>
@@ -153,82 +93,6 @@
     </div>
 
     <script>
-        const baseUrl = '.';
-        const IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-        
-        function showToast(msg, type, onRetry) {
-            type = type || 'error';
-            var c = document.getElementById('toastContainer');
-            if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-            var t = document.createElement('div');
-            t.className = 'toast ' + type;
-            t.textContent = msg;
-            if (onRetry) {
-                var b = document.createElement('button');
-                b.textContent = '重试';
-                b.style.cssText = 'margin-left:12px;padding:4px 12px;border:none;border-radius:4px;background:rgba(255,255,255,0.25);color:#fff;cursor:pointer;font-size:13px;vertical-align:middle;';
-                b.onclick = function(e) { e.stopPropagation(); t.remove(); onRetry(); };
-                t.appendChild(b);
-            }
-            c.appendChild(t);
-            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 4000);
-        }
-        
-        async function fetchCSV(url) {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const text = await response.text();
-            const lines = text.trim().split('\n');
-            const headers = lines[0].split(',').map(h => h.trim());
-            return lines.slice(1).map(line => {
-                const values = line.split(',');
-                const obj = {};
-                headers.forEach((h, i) => obj[h] = values[i] ? values[i].trim() : '');
-                return obj;
-            });
-        }
-        
-        async function updateData() {
-            const nav = document.getElementById('updateNavBtn');
-            const dateSpan = document.getElementById('updateDate');
-            const pb = document.getElementById('progressBar');
-            if (!nav) return;
-            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
-            nav.classList.add('disabled');
-            if (pb) pb.classList.add('active');
-            try {
-                const res = await fetch('/api/update/all', { method: 'POST' });
-                const data = await res.json();
-                if (data.status !== 'ok') {
-                    showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
-                    nav.classList.remove('disabled');
-                    if (pb) pb.classList.remove('active');
-                    return;
-                }
-                const taskId = data.task_id;
-                const poll = setInterval(async () => {
-                    const pr = await fetch('/api/task/' + taskId);
-                    const ps = await pr.json();
-                    if (ps.status === 'done') {
-                        clearInterval(poll);
-                        if (pb) pb.classList.remove('active');
-                        if (dateSpan) dateSpan.textContent = '最新数据: ' + new Date().toLocaleTimeString();
-                        showToast('数据更新完成', 'success');
-                        setTimeout(() => { location.reload(); }, 2000);
-                    } else if (ps.status === 'error') {
-                        clearInterval(poll);
-                        showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
-                        nav.classList.remove('disabled');
-                        if (pb) pb.classList.remove('active');
-                    }
-                }, 2000);
-            } catch (e) {
-                showToast('请求失败: ' + e.message, 'error');
-                nav.classList.remove('disabled');
-                if (pb) pb.classList.remove('active');
-            }
-        }
-
         async function uploadCsv() {
             if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             const btn = document.getElementById('uploadCsvBtn');
@@ -242,7 +106,6 @@
                     showToast('CSV上传完成', 'success');
                     setTimeout(() => { btn.disabled = false; btn.textContent = '上传CSV'; }, 1500);
                 } else {
-                    btn.textContent = '上传失败';
                     showToast('上传失败: ' + data.message, 'error', function() { uploadCsv(); });
                     btn.disabled = false;
                     btn.textContent = '上传CSV';
@@ -254,7 +117,7 @@
                 btn.textContent = '上传CSV';
             }
         }
-        
+
         async function uploadHtml() {
             if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
             const btn = document.getElementById('uploadHtmlBtn');
@@ -268,7 +131,6 @@
                     showToast('HTML上传完成', 'success');
                     setTimeout(() => { btn.disabled = false; btn.textContent = '上传HTML'; }, 1500);
                 } else {
-                    btn.textContent = '上传失败';
                     showToast('上传失败: ' + data.message, 'error', function() { uploadHtml(); });
                     btn.disabled = false;
                     btn.textContent = '上传HTML';
@@ -278,71 +140,6 @@
                 showToast('请求失败: ' + e.message, 'error', function() { uploadHtml(); });
                 btn.disabled = false;
                 btn.textContent = '上传HTML';
-            }
-        }
-        
-        const allCharts = [];
-        let syncIndex = -1;
-        let isLocked = false;
-        
-        const crosshairPlugin = {
-            id: 'crosshair',
-            afterDraw(chart) {
-                if (syncIndex >= 0 && syncIndex < chart.config.data.labels.length && chart.chartArea) {
-                    const ctx = chart.ctx;
-                    const xAxis = chart.scales.x;
-                    const yAxis = chart.scales.y;
-                    if (!xAxis || !yAxis) return;
-                    const x = xAxis.getPixelForValue(syncIndex);
-                    
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.moveTo(x, chart.chartArea.top);
-                    ctx.lineTo(x, chart.chartArea.bottom);
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = '#000000';
-                    ctx.setLineDash([4, 4]);
-                    ctx.stroke();
-                    ctx.restore();
-                    
-                    const datasets = chart.config.data.datasets;
-                    if (datasets.length > 0 && datasets[0].data[syncIndex] !== undefined) {
-                        const yVal = datasets[0].data[syncIndex];
-                        if (yVal !== null && !isNaN(yVal)) {
-                            const y = yAxis.getPixelForValue(yVal);
-                            ctx.save();
-                            ctx.beginPath();
-                            ctx.moveTo(chart.chartArea.left, y);
-                            ctx.lineTo(chart.chartArea.right, y);
-                            ctx.lineWidth = 1;
-                            ctx.strokeStyle = '#000000';
-                            ctx.setLineDash([4, 4]);
-                            ctx.stroke();
-                            ctx.restore();
-                        }
-                    }
-                }
-            }
-        };
-        
-        function syncCrosshair(sourceChart, eventIndex) {
-            if (isLocked) return;
-            syncIndex = eventIndex;
-            allCharts.forEach(c => c.update('none'));
-        }
-        
-        function toggleCrosshair(sourceChart, event) {
-            if (syncIndex === -1) {
-                const el = sourceChart.getElementsAtEventForMode(event, 'index', { mode: 'index', intersect: false }, false);
-                if (el.length > 0) {
-                    isLocked = true;
-                    syncIndex = el[0].index;
-                    allCharts.forEach(c => c.update('none'));
-                }
-            } else {
-                isLocked = false;
-                syncIndex = -1;
-                allCharts.forEach(c => c.update('none'));
             }
         }
 
@@ -631,41 +428,6 @@
             nav.classList.remove('disabled');
             if (pb) pb.classList.remove('active');
         }
-
-        function realtimeUpdate() {
-            var nav = document.getElementById('rtNav');
-            if (nav.classList.contains('disabled')) return;
-            var today = new Date().toDateString();
-            var savedDate = localStorage.getItem('realtime_quota_date') || '';
-            if (savedDate !== today) {
-                localStorage.setItem('realtime_quota_date', today);
-                localStorage.setItem('realtime_quota_20', '0');
-            }
-            var quota = JSON.parse(localStorage.getItem('realtime_quota_20') || '0');
-            if (quota >= 20) {
-                showToast('今日盘中更新(20次)已用完，明日重置', 'warning');
-                return;
-            }
-            quota++;
-            localStorage.setItem('realtime_quota_20', JSON.stringify(quota));
-            showToast('盘中更新配额余' + (20 - quota) + '次', 'success');
-            nav.textContent = '⏳ 更新中...';
-            nav.classList.add('disabled');
-            remoteUpdateData().then(function() {
-                nav.textContent = '盘中数据';
-                nav.classList.remove('disabled');
-            });
-        }
-
-        document.addEventListener('keydown', function(e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'r' || e.key === 'R') { updateData(); return; }
-            if (e.key === '1') { return; }
-            if (e.key === '2') { location.href = 'index.html'; }
-            if (e.key === '3') { location.href = 'track.html'; return; }
-            if (e.key === '4') { location.href = 'analysis.html'; }
-            if (e.key === '5') { location.href = 'scanner.html'; }
-        });
 
         init();
     </script>
