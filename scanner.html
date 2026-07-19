@@ -5,32 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>扫描结果</title>
     <link rel="icon" href="logo.png">
+    <link rel="stylesheet" href="assets/common.css">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="assets/common.js"></script>
     <style>
-        :root { --primary: #2563eb; --primary-light: #3b82f6; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --dark: #1e293b; --gray: #64748b; --light: #f8fafc; --white: #ffffff; --border: #e2e8f0; --shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f4f8; color: var(--dark); display: flex; min-height: 100vh; overscroll-behavior-y: contain; }
-        .sidebar { width: 200px; background: var(--white); border-right: 1px solid var(--border); padding: 24px 0; flex-shrink: 0; }
-        .logo { padding: 0 16px 16px; font-size: 18px; font-weight: 600; color: var(--primary); border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-        .nav-item { padding: 10px 16px; color: var(--gray); cursor: pointer; }
-        .nav-item:hover, .nav-item.active { background: var(--light); color: var(--primary); }
-        .nav-divider { border:none; border-top:1px solid var(--border); margin:8px 16px; }
-        .main { flex: 1; padding: 24px; max-width: 1200px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .header h1 { font-size: 24px; font-weight: 600; }
-        .header .date { color: var(--gray); font-size: 13px; }
-        .toast-container { position:fixed; top:20px; right:20px; z-index:9999; }
-        .toast { padding:12px 20px; border-radius:8px; color:#fff; font-size:14px; margin-bottom:8px; animation:toastIn .3s ease; max-width:400px; }
-        .toast.error { background:#ef4444; }
-        .toast.success { background:#10b981; }
-        .toast.warning { background:#f59e0b; }
-        @keyframes toastIn { from{opacity:0;transform:translateX(100px)} to{opacity:1;transform:translateX(0)} }
-        .nav-item.disabled { opacity:0.4; pointer-events:none; cursor:default; }
-        .progress-bar { position:fixed; top:0; left:0; right:0; z-index:9999; height:3px; background:var(--border); overflow:hidden; display:none; }
-        .progress-bar.active { display:block; }
-        .progress-bar-inner { height:100%; width:40%; background:linear-gradient(90deg,var(--primary),#818cf8); border-radius:2px; animation:pb-indeterminate 1.5s ease-in-out infinite; }
-        @keyframes pb-indeterminate { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
-
+        body { background: #f0f4f8; }
+        .main { max-width: 1200px; }
         .panel { margin-bottom: 32px; background: var(--white); border-radius: 8px; box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; }
         .panel-header { padding: 16px 20px 0; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
         .panel-title { font-size: 16px; font-weight: 600; color: var(--dark); }
@@ -60,22 +40,14 @@
         .controls .legend-invert:hover { border-color:var(--primary); color:var(--primary); }
     </style>
 </head>
-<body>
-    <div class="sidebar">
-        <div class="logo">华夫饼手册</div>
-        <div class="nav-item" onclick="location.href='resonance.html'">共振分析</div>
-        <div class="nav-item" onclick="location.href='index.html'">图谱分析</div>
-        <div class="nav-item" onclick="location.href='track.html'">周期研判</div>
-        <div class="nav-item" onclick="location.href='analysis.html'">信号收集</div>
-        <div class="nav-item active" onclick="location.href='scanner.html'">扫描结果</div>
-        <div class="nav-item" onclick="showToast('该功能暂未开放', 'warning')" style="cursor:default;">设置</div>
-        <hr class="nav-divider">
-        <div class="nav-item" id="updateNavBtn" onclick="updateData()">盘后数据</div>
-    </div>
+<body data-page="scanner">
+    <div class="sidebar" id="appSidebar"></div>
     <div class="main">
         <div class="header">
             <h1>扫描结果</h1>
-            <span class="date" id="updateDate">加载中...</span>
+            <div class="header-right">
+                <span class="date" id="updateDate">加载中...</span>
+            </div>
         </div>
         <div class="progress-bar" id="progressBar"><div class="progress-bar-inner"></div></div>
 
@@ -98,25 +70,7 @@
         </div>
     </div>
 
-    <div class="toast-container" id="toastContainer"></div>
-
     <script>
-        function showToast(msg, type, onRetry) {
-            type = type || 'error';
-            var c = document.getElementById('toastContainer');
-            if (!c) { c = document.createElement('div'); c.id = 'toastContainer'; c.className = 'toast-container'; document.body.appendChild(c); }
-            var t = document.createElement('div'); t.className = 'toast ' + type; t.textContent = msg;
-            if (onRetry) {
-                var b = document.createElement('button');
-                b.textContent = '重试';
-                b.style.cssText = 'margin-left:12px;padding:4px 12px;border:none;border-radius:4px;background:rgba(255,255,255,0.25);color:#fff;cursor:pointer;font-size:13px;vertical-align:middle;';
-                b.onclick = function(e) { e.stopPropagation(); t.remove(); onRetry(); };
-                t.appendChild(b);
-            }
-            c.appendChild(t);
-            setTimeout(function() { t.style.opacity = '0'; t.style.transition = 'opacity 0.3s'; setTimeout(function() { t.remove(); }, 300); }, 4000);
-        }
-
         function escape(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
         function invertLegend(chartId) {
@@ -131,19 +85,6 @@
                     seen[s.name] = true;
                     chart.dispatchAction({type: 'legendToggleSelect', name: s.name});
                 }
-            });
-        }
-
-        async function fetchCSV(url) {
-            var r = await fetch(url);
-            var t = await r.text();
-            var lines = t.trim().split('\n');
-            var headers = lines[0].split(',').map(function(h) { return h.trim().replace(/^\uFEFF/, ''); });
-            return lines.slice(1).map(function(line) {
-                var vals = line.split(',');
-                var obj = {};
-                headers.forEach(function(h, i) { obj[h] = vals[i] ? vals[i].trim() : ''; });
-                return obj;
             });
         }
 
@@ -357,57 +298,6 @@
                 document.getElementById('updateDate').textContent = new Date().toLocaleString('zh-CN');
             } catch (e) {
                 showToast('加载数据失败: ' + e.message, 'error');
-            }
-        }
-
-        document.addEventListener('keydown', function(e) {
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-            if (e.key === 'r' || e.key === 'R') { updateData(); return; }
-            if (e.key === '1') { location.href = 'resonance.html'; }
-            if (e.key === '2') { location.href = 'index.html'; }
-            if (e.key === '3') { location.href = 'track.html'; return; }
-            if (e.key === '4') { location.href = 'analysis.html'; }
-            if (e.key === '5') { location.href = 'scanner.html'; return; }
-        });
-
-        var IS_REMOTE = !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-
-        async function updateData() {
-            var nav = document.getElementById('updateNavBtn');
-            var pb = document.getElementById('progressBar');
-            if (!nav) return;
-            if (IS_REMOTE) { showToast('该功能仅限电脑本地使用', 'warning'); return; }
-            nav.classList.add('disabled');
-            if (pb) pb.classList.add('active');
-            try {
-                var res = await fetch('/api/update/all', { method: 'POST' });
-                var data = await res.json();
-                if (data.status !== 'ok') {
-                    showToast('更新失败: ' + data.message, 'error', function() { updateData(); });
-                    nav.classList.remove('disabled');
-                    if (pb) pb.classList.remove('active');
-                    return;
-                }
-                var taskId = data.task_id;
-                var poll = setInterval(async function() {
-                    var pr = await fetch('/api/task/' + taskId);
-                    var ps = await pr.json();
-                    if (ps.status === 'done') {
-                        clearInterval(poll);
-                        if (pb) pb.classList.remove('active');
-                        showToast('数据更新完成', 'success');
-                        setTimeout(function() { location.reload(); }, 2000);
-                    } else if (ps.status === 'error') {
-                        clearInterval(poll);
-                        showToast('更新失败: ' + (ps.error || '未知错误'), 'error', function() { updateData(); });
-                        nav.classList.remove('disabled');
-                        if (pb) pb.classList.remove('active');
-                    }
-                }, 2000);
-            } catch(e) {
-                showToast('请求失败: ' + e.message, 'error', function() { updateData(); });
-                nav.classList.remove('disabled');
-                if (pb) pb.classList.remove('active');
             }
         }
 
